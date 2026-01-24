@@ -1,7 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { PublicKey, Keypair, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, createMint, createAccount, mintTo, getAccount } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, createMint, getOrCreateAssociatedTokenAccount, mintTo, getAccount, createInitializeAccountInstruction } from "@solana/spl-token";
 import { ArciumHelloWorld } from "../target/types/arcium_hello_world";
 import { randomBytes } from "crypto";
 import {
@@ -18,14 +18,15 @@ import {
   getExecutingPoolAccAddress,
   getComputationAccAddress,
   getClusterAccAddress,
+  getFeePoolAccAddress,
+  getClockAccAddress,
   getArciumEnv,
   x25519,
 } from "@arcium-hq/client";
 import * as fs from "fs";
 import * as os from "os";
-import { expect } from "chai";
 
-describe("Anti-MEV Liquidity Pool", () => {
+describe("Encrypted Liquidity Pool", () => {
   const connection = new anchor.web3.Connection(
     "https://devnet.helius-rpc.com/?api-key=e229b931-070b-490c-b33b-c2f1d23747e8",
     {
@@ -52,14 +53,14 @@ describe("Anti-MEV Liquidity Pool", () => {
   let lpMint: PublicKey;
   let poolPDA: PublicKey;
   let poolAuthority: PublicKey;
-  let poolTokenA: PublicKey;
-  let poolTokenB: PublicKey;
+  let poolTokenAKeypair: Keypair;
+  let poolTokenBKeypair: Keypair;
   let userTokenA: PublicKey;
   let userTokenB: PublicKey;
   let userLpToken: PublicKey;
 
   console.log("\n" + "=".repeat(70));
-  console.log("🔐 ANTI-MEV DEX - DEVNET");
+  console.log("ENCRYPTED LIQUIDITY POOL - DEVNET");
   console.log("=".repeat(70));
   console.log("Program ID:", program.programId.toString());
   console.log("Wallet:", wallet.publicKey.toString());
@@ -75,7 +76,7 @@ describe("Anti-MEV Liquidity Pool", () => {
   it("Setup: Create tokens and accounts", async function () {
     this.timeout(120000);
 
-    console.log("🪙 Creating Token A...");
+    console.log("[1/9] Creating Token A");
     tokenAMint = await createMint(
       connection,
       wallet.payer,
@@ -85,7 +86,7 @@ describe("Anti-MEV Liquidity Pool", () => {
     );
     console.log("Token A Mint:", tokenAMint.toString());
 
-    console.log("🪙 Creating Token B...");
+    console.log("[2/9] Creating Token B");
     tokenBMint = await createMint(
       connection,
       wallet.payer,
@@ -107,7 +108,7 @@ describe("Anti-MEV Liquidity Pool", () => {
     );
     console.log("Pool Authority:", poolAuthority.toString());
 
-    console.log("🪙 Creating LP Token...");
+    console.log("[3/9] Creating LP Token");
     lpMint = await createMint(
       connection,
       wallet.payer,
@@ -117,47 +118,78 @@ describe("Anti-MEV Liquidity Pool", () => {
     );
     console.log("LP Mint:", lpMint.toString());
 
-    poolTokenA = await createAccount(
-      connection,
-      wallet.payer,
-      tokenAMint,
-      poolAuthority
-    );
-    console.log("Pool Token A:", poolTokenA.toString());
+    console.log("[4/9] Creating pool token accounts");
+    poolTokenAKeypair = Keypair.generate();
+    poolTokenBKeypair = Keypair.generate();
 
-    poolTokenB = await createAccount(
-      connection,
-      wallet.payer,
-      tokenBMint,
-      poolAuthority
+    const createAccountsTx = new anchor.web3.Transaction().add(
+      anchor.web3.SystemProgram.createAccount({
+        fromPubkey: wallet.publicKey,
+        newAccountPubkey: poolTokenAKeypair.publicKey,
+        space: 165,
+        lamports: await connection.getMinimumBalanceForRentExemption(165),
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      anchor.web3.SystemProgram.createAccount({
+        fromPubkey: wallet.publicKey,
+        newAccountPubkey: poolTokenBKeypair.publicKey,
+        space: 165,
+        lamports: await connection.getMinimumBalanceForRentExemption(165),
+        programId: TOKEN_PROGRAM_ID,
+      })
     );
-    console.log("Pool Token B:", poolTokenB.toString());
 
-    userTokenA = await createAccount(
+    await provider.sendAndConfirm(createAccountsTx, [poolTokenAKeypair, poolTokenBKeypair]);
+
+    const initTx = new anchor.web3.Transaction().add(
+      createInitializeAccountInstruction(
+        poolTokenAKeypair.publicKey,
+        tokenAMint,
+        poolAuthority,
+        TOKEN_PROGRAM_ID
+      ),
+      createInitializeAccountInstruction(
+        poolTokenBKeypair.publicKey,
+        tokenBMint,
+        poolAuthority,
+        TOKEN_PROGRAM_ID
+      )
+    );
+
+    await provider.sendAndConfirm(initTx);
+
+    console.log("Pool Token A:", poolTokenAKeypair.publicKey.toString());
+    console.log("Pool Token B:", poolTokenBKeypair.publicKey.toString());
+
+    console.log("[5/9] Creating user token accounts");
+    const userTokenAAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       wallet.payer,
       tokenAMint,
       wallet.publicKey
     );
+    userTokenA = userTokenAAccount.address;
     console.log("User Token A:", userTokenA.toString());
 
-    userTokenB = await createAccount(
+    const userTokenBAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       wallet.payer,
       tokenBMint,
       wallet.publicKey
     );
+    userTokenB = userTokenBAccount.address;
     console.log("User Token B:", userTokenB.toString());
 
-    userLpToken = await createAccount(
+    const userLpTokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       wallet.payer,
       lpMint,
       wallet.publicKey
     );
+    userLpToken = userLpTokenAccount.address;
     console.log("User LP Token:", userLpToken.toString());
 
-    console.log("\n💰 Minting tokens to user...");
+    console.log("[6/9] Minting tokens to user");
     await mintTo(
       connection,
       wallet.payer,
@@ -174,7 +206,7 @@ describe("Anti-MEV Liquidity Pool", () => {
       wallet.publicKey,
       1_000_000_000_000
     );
-    console.log("✅ Setup complete");
+    console.log("Setup complete\n");
   });
 
   it("Initialize CompDef for initialize_pool", async function () {
@@ -195,10 +227,10 @@ describe("Anti-MEV Liquidity Pool", () => {
   it("Initialize encrypted liquidity pool", async function () {
     this.timeout(1800000);
 
-    console.log("\n🔑 Getting MXE public key...");
+    console.log("\n[7/9] Getting MXE public key");
     const mxePublicKey = await getMXEPublicKeyWithRetry(provider, program.programId);
 
-    console.log("🔐 Encrypting initial reserves...");
+    console.log("[8/9] Encrypting initial reserves");
     const privateKey = x25519.utils.randomSecretKey();
     const publicKey = x25519.getPublicKey(privateKey);
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
@@ -212,8 +244,7 @@ describe("Anti-MEV Liquidity Pool", () => {
 
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
 
-    console.log("\n📤 Initializing pool...");
-    const poolInitEventPromise = awaitEvent(program, "poolInitializedEvent");
+    console.log("[9/9] Initializing pool");
 
     const sig = await program.methods
       .initializeLiquidityPool(
@@ -227,26 +258,27 @@ describe("Anti-MEV Liquidity Pool", () => {
       )
       .accountsPartial({
         authority: wallet.publicKey,
-        pool: poolPDA,
         tokenAMint,
         tokenBMint,
         lpMint,
         userTokenA,
         userTokenB,
-        poolTokenA,
-        poolTokenB,
+        poolTokenA: poolTokenAKeypair.publicKey,
+        poolTokenB: poolTokenBKeypair.publicKey,
+        mxeAccount: getMXEAccAddress(program.programId),
+        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
         computationAccount: getComputationAccAddress(
           arciumEnv.arciumClusterOffset,
           computationOffset
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
-        mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("initialize_pool")).readUInt32LE()
         ),
+        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        poolAccount: getFeePoolAccAddress(),
+        clockAccount: getClockAccAddress(),
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
@@ -279,9 +311,9 @@ describe("Anti-MEV Liquidity Pool", () => {
       ])
       .rpc({ skipPreflight: true });
 
-    console.log("✅ Pool init queued:", sig);
+    console.log("Transaction:", sig);
 
-    console.log("⏳ Waiting for MPC computation...");
+    console.log("Waiting for MPC computation...");
     await awaitComputationFinalization(
       provider,
       computationOffset,
@@ -289,9 +321,7 @@ describe("Anti-MEV Liquidity Pool", () => {
       "confirmed"
     );
 
-    const event = await poolInitEventPromise;
-    console.log("🎉 Pool initialized!");
-    console.log("Encrypted LP Supply:", event.encryptedLpSupply);
+    console.log("Pool initialized");
 
     const lpAccount = await getAccount(connection, userLpToken);
     console.log("User LP Balance:", lpAccount.amount.toString());
@@ -300,10 +330,10 @@ describe("Anti-MEV Liquidity Pool", () => {
   it("Add liquidity to pool", async function () {
     this.timeout(1800000);
 
-    console.log("\n🔑 Getting MXE public key...");
+    console.log("\nGetting MXE public key");
     const mxePublicKey = await getMXEPublicKeyWithRetry(provider, program.programId);
 
-    console.log("🔐 Encrypting amounts...");
+    console.log("Encrypting amounts");
     const privateKey = x25519.utils.randomSecretKey();
     const publicKey = x25519.getPublicKey(privateKey);
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
@@ -317,8 +347,7 @@ describe("Anti-MEV Liquidity Pool", () => {
 
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
 
-    console.log("\n📤 Adding liquidity...");
-    const liquidityAddedEventPromise = awaitEvent(program, "liquidityAddedEvent");
+    console.log("Adding liquidity");
 
     const sig = await program.methods
       .addLiquidityToPool(
@@ -335,20 +364,22 @@ describe("Anti-MEV Liquidity Pool", () => {
         pool: poolPDA,
         userTokenA,
         userTokenB,
-        poolTokenA,
-        poolTokenB,
+        poolTokenA: poolTokenAKeypair.publicKey,
+        poolTokenB: poolTokenBKeypair.publicKey,
+        mxeAccount: getMXEAccAddress(program.programId),
+        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
         computationAccount: getComputationAccAddress(
           arciumEnv.arciumClusterOffset,
           computationOffset
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
-        mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("add_liquidity")).readUInt32LE()
         ),
+        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        poolAccount: getFeePoolAccAddress(),
+        clockAccount: getClockAccAddress(),
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
@@ -386,9 +417,9 @@ describe("Anti-MEV Liquidity Pool", () => {
       ])
       .rpc({ skipPreflight: true });
 
-    console.log("✅ Add liquidity queued:", sig);
+    console.log("Transaction:", sig);
 
-    console.log("⏳ Waiting for MPC computation...");
+    console.log("Waiting for MPC computation...");
     await awaitComputationFinalization(
       provider,
       computationOffset,
@@ -396,9 +427,7 @@ describe("Anti-MEV Liquidity Pool", () => {
       "confirmed"
     );
 
-    const event = await liquidityAddedEventPromise;
-    console.log("🎉 Liquidity added!");
-    console.log("Encrypted LP Minted:", event.encryptedLpMinted);
+    console.log("Liquidity added");
 
     const lpAccount = await getAccount(connection, userLpToken);
     console.log("User LP Balance:", lpAccount.amount.toString());
@@ -419,61 +448,50 @@ describe("Anti-MEV Liquidity Pool", () => {
 
     const accountInfo = await provider.connection.getAccountInfo(compDefPDA);
     if (accountInfo !== null) {
-      console.log(`⚠️  CompDef ${circuitName} already exists`);
+      console.log(`CompDef ${circuitName} already exists`);
       return null;
     }
 
-    console.log(`📝 Creating CompDef for ${circuitName}...`);
+    console.log(`Creating CompDef for ${circuitName}`);
 
     let sig: string;
     if (circuitName === "initialize_pool") {
       sig = await program.methods
         .initInitializePoolCompDef()
-        .accounts({
-          compDefAccount: compDefPDA,
+        .accountsPartial({
           payer: owner.publicKey,
           mxeAccount: getMXEAccAddress(program.programId),
+          compDefAccount: compDefPDA,
+          systemProgram: SystemProgram.programId,
         })
         .signers([owner])
         .rpc({ commitment: "confirmed" });
     } else if (circuitName === "add_liquidity") {
       sig = await program.methods
         .initAddLiquidityCompDef()
-        .accounts({
-          compDefAccount: compDefPDA,
+        .accountsPartial({
           payer: owner.publicKey,
           mxeAccount: getMXEAccAddress(program.programId),
+          compDefAccount: compDefPDA,
+          systemProgram: SystemProgram.programId,
         })
         .signers([owner])
         .rpc({ commitment: "confirmed" });
     } else if (circuitName === "remove_liquidity") {
       sig = await program.methods
         .initRemoveLiquidityCompDef()
-        .accounts({
-          compDefAccount: compDefPDA,
+        .accountsPartial({
           payer: owner.publicKey,
           mxeAccount: getMXEAccAddress(program.programId),
+          compDefAccount: compDefPDA,
+          systemProgram: SystemProgram.programId,
         })
         .signers([owner])
         .rpc({ commitment: "confirmed" });
     }
 
-    console.log(`✅ CompDef ${circuitName} created:`, sig);
+    console.log(`CompDef ${circuitName} created:`, sig);
     return sig;
-  }
-
-  async function awaitEvent<E extends keyof anchor.IdlEvents<typeof program.idl>>(
-    program: Program<ArciumHelloWorld>,
-    eventName: E
-  ): Promise<anchor.IdlEvents<typeof program.idl>[E]> {
-    let listenerId: number;
-    const event = await new Promise<anchor.IdlEvents<typeof program.idl>[E]>((res) => {
-      listenerId = program.addEventListener(eventName, (event) => {
-        res(event);
-      });
-    });
-    await program.removeEventListener(listenerId);
-    return event;
   }
 });
 
