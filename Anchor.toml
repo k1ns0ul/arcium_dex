@@ -1,0 +1,29 @@
+[toolchain]
+package_manager = "yarn"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+arcium_hello_world = "5gHPnecQKenfUe1U8ACSqbrgCHFmuSy6kR4Fr3Adfp1Q"
+
+[programs.localnet]
+arcium_hello_world = "5gHPnecQKenfUe1U8ACSqbrgCHFmuSy6kR4Fr3Adfp1Q"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
+
+[test.validator]
+rpc_port = 8899
+faucet_port = 9900
+
+[test]
+startup_wait = 180000

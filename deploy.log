@@ -1,0 +1,21 @@
+Deploying and initializing MXE...
+Deploying cluster: https://devnet.helius-rpc.com/?api-key=e229b931-070b-490c-b33b-c2f1d23747e8
+Upgrade authority: /Users/aleksey/.config/solana/id.json
+Deploying program "arcium_hello_world"...
+Program path: /Users/aleksey/Desktop/NEW_DIPLOMA/arcium_hello_world/target/deploy/arcium_hello_world.so...
+Program Id: 5gHPnecQKenfUe1U8ACSqbrgCHFmuSy6kR4Fr3Adfp1Q
+
+Signature: 2twzHbijQeZHoL5BQPXrFdJfmcLjXUGtpEjvnNrRXwxPy5deKA46fbUwKV5byj4o7AHxTQzRzUqHfyGtjtfS39ee
+
+Waiting for program 5gHPnecQKenfUe1U8ACSqbrgCHFmuSy6kR4Fr3Adfp1Q to be confirmed...
+Program confirmed on-chain
+Idl data length: 2766 bytes
+Step 0/2766 
+Step 600/2766 
+Step 1200/2766 
+Step 1800/2766 
+Step 2400/2766 
+Idl account created: 4MzQyrcCgRCbc2bsBCA5h3NRid4V2g45ducNsuBzwnrA
+Deploy success
+MXE initialized: 5zNdz4rAAJ9KPqAeRyjoiQ2qbaukpisCBwCDv9jT6S3nXgsj7W6MyDPwJ1zQkwjhLJ23h5zGvzifYdzeq6tEYh8B
+✅ MXE deployed and initialized successfully
