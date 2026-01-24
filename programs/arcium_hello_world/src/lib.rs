@@ -121,9 +121,13 @@ pub mod arcium_hello_world {
 
 
         let args = ArgBuilder::new()
+            // Первый Enc<Shared, u64> - reserve_a
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_a)
+            // Второй Enc<Shared, u64> - reserve_b
+            .x25519_pubkey(pubkey)
+            .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_b)
             .build();
 
@@ -283,8 +287,14 @@ pub mod arcium_hello_world {
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
             .encrypted_u64(pool.encrypted_reserve_a)
+            .x25519_pubkey(pubkey)
+            .plaintext_u128(nonce)
             .encrypted_u64(pool.encrypted_reserve_b)
+            .x25519_pubkey(pubkey)
+            .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_a)
+            .x25519_pubkey(pubkey)
+            .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_b)
             .build();
 
@@ -435,6 +445,8 @@ pub mod arcium_hello_world {
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
             .encrypted_u64(pool.encrypted_reserve_a)
+            .x25519_pubkey(pubkey)
+            .plaintext_u128(nonce)
             .encrypted_u64(pool.encrypted_reserve_b)
             .plaintext_u64(amount_a_out)
             .plaintext_u64(amount_b_out)
