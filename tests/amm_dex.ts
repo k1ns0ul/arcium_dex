@@ -667,11 +667,9 @@ describe("Encrypted AMM DEX — Devnet", () => {
       (await getAccount(connection, userTokenB)).amount
     );
 
-    // Выводим половину LP — Math.floor чтобы получить целое число
     const lpToRemove = Math.floor(lpBalance / 2);
     console.log(`  LP balance: ${lpBalance}, removing: ${lpToRemove}`);
 
-    // Безопасная проверка — если LP 0, тест предыдущий не прошёл
     expect(lpToRemove).to.be.gt(0, "LP balance is 0 — did test 2 pass?");
 
     const privateKey = x25519.utils.randomSecretKey();
@@ -692,6 +690,10 @@ describe("Encrypted AMM DEX — Devnet", () => {
         pool: poolPDA,
         lpMint,
         userLpToken,
+        userTokenA,
+        userTokenB,
+        poolTokenA: poolTokenAKp.publicKey,
+        poolTokenB: poolTokenBKp.publicKey,
         mxeAccount: getMXEAccAddress(program.programId),
         mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
         executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
@@ -708,15 +710,6 @@ describe("Encrypted AMM DEX — Devnet", () => {
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
-      // RemoveLiquidityCallback требует доп. аккаунты через remainingAccounts
-      .remainingAccounts([
-        { pubkey: userTokenA,              isSigner: false, isWritable: true  },
-        { pubkey: userTokenB,              isSigner: false, isWritable: true  },
-        { pubkey: poolTokenAKp.publicKey,  isSigner: false, isWritable: true  },
-        { pubkey: poolTokenBKp.publicKey,  isSigner: false, isWritable: true  },
-        { pubkey: poolAuthority,           isSigner: false, isWritable: false },
-        { pubkey: TOKEN_PROGRAM_ID,        isSigner: false, isWritable: false },
-      ])
       .rpc({ commitment: "confirmed" });
 
     console.log("  Tx:", sig);

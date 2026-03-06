@@ -822,17 +822,6 @@ pub struct InitializeLiquidityPool<'info> {
 #[callback_accounts("initialize_pool")]
 #[derive(Accounts)]
 pub struct InitializePoolCallback<'info> {
-    #[account(mut)]
-    pub pool: Account<'info, LiquidityPool>,
-    /// CHECK:
-    #[account(mut)]
-    pub lp_mint: UncheckedAccount<'info>,
-    /// CHECK:
-    #[account(mut)]
-    pub user_lp_token: UncheckedAccount<'info>,
-    /// CHECK:
-    #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
-    pub pool_authority: UncheckedAccount<'info>,
     pub arcium_program: Program<'info, Arcium>,
     #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_INIT_POOL))]
     pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
@@ -845,6 +834,17 @@ pub struct InitializePoolCallback<'info> {
     /// CHECK:
     #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
     pub instructions_sysvar: AccountInfo<'info>,
+    #[account(mut)]
+    pub pool: Account<'info, LiquidityPool>,
+    /// CHECK:
+    #[account(mut)]
+    pub lp_mint: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_lp_token: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
+    pub pool_authority: UncheckedAccount<'info>,
     /// CHECK:
     pub token_program: UncheckedAccount<'info>,
 }
@@ -902,6 +902,18 @@ pub struct AddLiquidityToPool<'info> {
 #[callback_accounts("add_liquidity")]
 #[derive(Accounts)]
 pub struct AddLiquidityCallback<'info> {
+    pub arcium_program: Program<'info, Arcium>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_ADD_LIQ))]
+    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK:
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Account<'info, Cluster>,
+    /// CHECK:
+    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub instructions_sysvar: AccountInfo<'info>,
     #[account(mut)]
     pub pool: Account<'info, LiquidityPool>,
     #[account(mut)]
@@ -921,18 +933,6 @@ pub struct AddLiquidityCallback<'info> {
     /// CHECK:
     #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
     pub pool_authority: UncheckedAccount<'info>,
-    pub arcium_program: Program<'info, Arcium>,
-    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_ADD_LIQ))]
-    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
-    #[account(address = derive_mxe_pda!())]
-    pub mxe_account: Account<'info, MXEAccount>,
-    /// CHECK:
-    pub computation_account: UncheckedAccount<'info>,
-    #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
-    pub cluster_account: Account<'info, Cluster>,
-    /// CHECK:
-    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
-    pub instructions_sysvar: AccountInfo<'info>,
     /// CHECK:
     pub token_program: UncheckedAccount<'info>,
 }
@@ -993,6 +993,18 @@ pub struct RemoveLiquidityFromPool<'info> {
 #[callback_accounts("remove_liquidity")]
 #[derive(Accounts)]
 pub struct RemoveLiquidityCallback<'info> {
+    pub arcium_program: Program<'info, Arcium>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_REMOVE_LIQ))]
+    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK:
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Account<'info, Cluster>,
+    /// CHECK:
+    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub instructions_sysvar: AccountInfo<'info>,
     #[account(mut)]
     pub pool: Account<'info, LiquidityPool>,
     #[account(mut)]
@@ -1012,21 +1024,10 @@ pub struct RemoveLiquidityCallback<'info> {
     /// CHECK:
     #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
     pub pool_authority: UncheckedAccount<'info>,
-    pub arcium_program: Program<'info, Arcium>,
-    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_REMOVE_LIQ))]
-    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
-    #[account(address = derive_mxe_pda!())]
-    pub mxe_account: Account<'info, MXEAccount>,
-    /// CHECK:
-    pub computation_account: UncheckedAccount<'info>,
-    #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
-    pub cluster_account: Account<'info, Cluster>,
-    /// CHECK:
-    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
-    pub instructions_sysvar: AccountInfo<'info>,
     /// CHECK:
     pub token_program: UncheckedAccount<'info>,
 }
+
 
 #[queue_computation_accounts("swap", user)]
 #[derive(Accounts)]
@@ -1078,6 +1079,18 @@ pub struct Swap<'info> {
 #[callback_accounts("swap")]
 #[derive(Accounts)]
 pub struct SwapCallback<'info> {
+    pub arcium_program: Program<'info, Arcium>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_SWAP))]
+    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK:
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Account<'info, Cluster>,
+    /// CHECK:
+    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub instructions_sysvar: AccountInfo<'info>,
     #[account(mut)]
     pub pool: Account<'info, LiquidityPool>,
     /// CHECK:
@@ -1095,21 +1108,10 @@ pub struct SwapCallback<'info> {
     /// CHECK:
     #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
     pub pool_authority: UncheckedAccount<'info>,
-    pub arcium_program: Program<'info, Arcium>,
-    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_SWAP))]
-    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
-    #[account(address = derive_mxe_pda!())]
-    pub mxe_account: Account<'info, MXEAccount>,
-    /// CHECK:
-    pub computation_account: UncheckedAccount<'info>,
-    #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
-    pub cluster_account: Account<'info, Cluster>,
-    /// CHECK:
-    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
-    pub instructions_sysvar: AccountInfo<'info>,
     /// CHECK:
     pub token_program: UncheckedAccount<'info>,
 }
+
 
 #[init_computation_definition_accounts("initialize_pool", payer)]
 #[derive(Accounts)]
