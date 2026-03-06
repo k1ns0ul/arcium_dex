@@ -139,12 +139,11 @@ pub mod arcium_hello_world {
 
         ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
 
+        // ИСПРАВЛЕНО: один pubkey/nonce для обоих ciphertext'ов (Enc<Shared, (u64, u64)>)
         let args = ArgBuilder::new()
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_a)
-            .x25519_pubkey(pubkey)
-            .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_b)
             .build();
 
@@ -191,10 +190,11 @@ pub mod arcium_hello_world {
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
+        // ИСПРАВЛЕНО: один field_0 с двумя ciphertexts (Enc<Shared, (u64, u64)>)
         let pool = &mut ctx.accounts.pool;
-        pool.encrypted_reserve_a = o.field_0.ciphertexts[0];
-        pool.encrypted_reserve_b = o.field_1.ciphertexts[0];
-        pool.reserve_nonce = o.field_0.nonce.to_le_bytes();
+        pool.encrypted_reserve_a = o.ciphertexts[0];
+        pool.encrypted_reserve_b = o.ciphertexts[1];
+        pool.reserve_nonce = o.nonce.to_le_bytes();
 
         let pool_key = pool.key();
         let bump_seed = [pool.pool_authority_bump];
@@ -282,18 +282,17 @@ pub mod arcium_hello_world {
         ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
 
         let reserve_nonce = u128::from_le_bytes(pool.reserve_nonce);
+
+        // ИСПРАВЛЕНО: резервы — один pubkey/nonce для двух ciphertexts (Enc<Shared, (u64, u64)>)
+        //             amounts — один pubkey/nonce для двух ciphertexts (Enc<Shared, (u64, u64)>)
         let args = ArgBuilder::new()
             .x25519_pubkey(pool.reserve_pubkey)
             .plaintext_u128(reserve_nonce)
             .encrypted_u64(pool.encrypted_reserve_a)
-            .x25519_pubkey(pool.reserve_pubkey)
-            .plaintext_u128(reserve_nonce)
             .encrypted_u64(pool.encrypted_reserve_b)
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_a)
-            .x25519_pubkey(pubkey)
-            .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_b)
             .build();
 
@@ -344,10 +343,11 @@ pub mod arcium_hello_world {
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
+        // ИСПРАВЛЕНО: один field_0 с двумя ciphertexts (Enc<Shared, (u64, u64)>)
         let pool = &mut ctx.accounts.pool;
-        pool.encrypted_reserve_a = o.field_0.ciphertexts[0];
-        pool.encrypted_reserve_b = o.field_1.ciphertexts[0];
-        pool.reserve_nonce = o.field_0.nonce.to_le_bytes();
+        pool.encrypted_reserve_a = o.ciphertexts[0];
+        pool.encrypted_reserve_b = o.ciphertexts[1];
+        pool.reserve_nonce = o.nonce.to_le_bytes();
 
         pool.reserve_a_hint = pool.reserve_a_hint.saturating_add(pool.pending_add_a);
         pool.reserve_b_hint = pool.reserve_b_hint.saturating_add(pool.pending_add_b);
@@ -429,12 +429,12 @@ pub mod arcium_hello_world {
         ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
 
         let reserve_nonce = u128::from_le_bytes(pool.reserve_nonce);
+
+        // ИСПРАВЛЕНО: резервы — один pubkey/nonce для двух ciphertexts (Enc<Shared, (u64, u64)>)
         let args = ArgBuilder::new()
             .x25519_pubkey(pool.reserve_pubkey)
             .plaintext_u128(reserve_nonce)
             .encrypted_u64(pool.encrypted_reserve_a)
-            .x25519_pubkey(pool.reserve_pubkey)
-            .plaintext_u128(reserve_nonce)
             .encrypted_u64(pool.encrypted_reserve_b)
             .plaintext_u64(amount_a_out)
             .plaintext_u64(amount_b_out)
@@ -487,10 +487,11 @@ pub mod arcium_hello_world {
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
+        // ИСПРАВЛЕНО: один field_0 с двумя ciphertexts (Enc<Shared, (u64, u64)>)
         let pool = &mut ctx.accounts.pool;
-        pool.encrypted_reserve_a = o.field_0.ciphertexts[0];
-        pool.encrypted_reserve_b = o.field_1.ciphertexts[0];
-        pool.reserve_nonce = o.field_0.nonce.to_le_bytes();
+        pool.encrypted_reserve_a = o.ciphertexts[0];
+        pool.encrypted_reserve_b = o.ciphertexts[1];
+        pool.reserve_nonce = o.nonce.to_le_bytes();
 
         let amount_a_out = pool.pending_withdraw_a;
         let amount_b_out = pool.pending_withdraw_b;
@@ -603,12 +604,11 @@ pub mod arcium_hello_world {
         let reserve_nonce = u128::from_le_bytes(pool.reserve_nonce);
         let a_to_b_u8: u8 = if a_to_b { 1 } else { 0 };
 
+        // ИСПРАВЛЕНО: резервы — один pubkey/nonce для двух ciphertexts (Enc<Shared, (u64, u64)>)
         let args = ArgBuilder::new()
             .x25519_pubkey(pool.reserve_pubkey)
             .plaintext_u128(reserve_nonce)
             .encrypted_u64(pool.encrypted_reserve_a)
-            .x25519_pubkey(pool.reserve_pubkey)
-            .plaintext_u128(reserve_nonce)
             .encrypted_u64(pool.encrypted_reserve_b)
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
@@ -663,10 +663,11 @@ pub mod arcium_hello_world {
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
+        // ИСПРАВЛЕНО: один field_0 с двумя ciphertexts (Enc<Shared, (u64, u64)>)
         let pool = &mut ctx.accounts.pool;
-        pool.encrypted_reserve_a = o.field_0.ciphertexts[0];
-        pool.encrypted_reserve_b = o.field_1.ciphertexts[0];
-        pool.reserve_nonce = o.field_0.nonce.to_le_bytes();
+        pool.encrypted_reserve_a = o.ciphertexts[0];
+        pool.encrypted_reserve_b = o.ciphertexts[1];
+        pool.reserve_nonce = o.nonce.to_le_bytes();
 
         let amount_out = pool.pending_swap_amount_out;
         let a_to_b = pool.pending_swap_a_to_b;
