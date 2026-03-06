@@ -1,3 +1,9 @@
+arcium deploy --cluster-offset 456 --recovery-set-size 4 --keypair-path ~/.config/solana/id.json --rpc-url "https://devnet.helius-rpc.com/?api-key=e229b931-070b-490c-b33b-c2f1d23747e8"
+
+arcium test --cluster devnet
+
+
+
 # CLAUDE.md
 
 Этот файл содержит руководство для Claude Code (claude.ai/code) при работе с кодом в этом репозитории.

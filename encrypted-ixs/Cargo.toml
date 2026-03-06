@@ -3,6 +3,9 @@ name = "encrypted-ixs"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
-arcis = "0.6.3"
-blake3 = "=1.8.2"
+arcis = "0.8.0"
+arcium-macros = "=0.8.0"
