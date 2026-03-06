@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-arcium_hello_world = "2cLc3GpBHitPA8WDYPzEHS9xD9KcK8LtV4B7x1yoR6e2"
+arcium_hello_world = "9ucx4YbhMZGjZTs8esDujeUSUgpV62P69nLMLvLqqQAt"
 
 [programs.localnet]
 arcium_hello_world = "5gHPnecQKenfUe1U8ACSqbrgCHFmuSy6kR4Fr3Adfp1Q"

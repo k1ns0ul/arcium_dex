@@ -1,10 +1,8 @@
-// programs/arcium_hello_world/src/lib.rs
-
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, MintTo, Transfer, Burn, TokenAccount, Token, Mint};
 use arcium_anchor::prelude::*;
-use arcium_anchor::LUT_PROGRAM_ID; // v0.7.0: для init_computation_definition_accounts
-use arcium_client::idl::arcium::types::{CircuitSource, OffChainCircuitSource};
+use arcium_anchor::LUT_PROGRAM_ID;
+use arcium_client::idl::arcium::types::{CircuitSource, OffChainCircuitSource, CallbackAccount};
 use arcium_macros::circuit_hash;
 
 const COMP_DEF_OFFSET_INIT_POOL: u32 = comp_def_offset("initialize_pool");
@@ -12,9 +10,8 @@ const COMP_DEF_OFFSET_ADD_LIQ: u32 = comp_def_offset("add_liquidity");
 const COMP_DEF_OFFSET_REMOVE_LIQ: u32 = comp_def_offset("remove_liquidity");
 const COMP_DEF_OFFSET_SWAP: u32 = comp_def_offset("swap");
 
-declare_id!("2cLc3GpBHitPA8WDYPzEHS9xD9KcK8LtV4B7x1yoR6e2");
+declare_id!("9ucx4YbhMZGjZTs8esDujeUSUgpV62P69nLMLvLqqQAt");
 
-// Целочисленный квадратный корень для начального LP supply = sqrt(a * b)
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
     let mut x = n;
@@ -23,7 +20,6 @@ fn integer_sqrt(n: u128) -> u64 {
     x as u64
 }
 
-// AMM формула on-chain — зеркало swap circuit, нужна для pre-compute amount_out
 fn compute_amount_out(reserve_in: u64, reserve_out: u64, amount_in: u64) -> u64 {
     let ri = reserve_in as u128;
     let ro = reserve_out as u128;
@@ -37,10 +33,6 @@ fn compute_amount_out(reserve_in: u64, reserve_out: u64, amount_in: u64) -> u64 
 #[arcium_program]
 pub mod arcium_hello_world {
     use super::*;
-
-    // =========================================================
-    // INIT COMP DEFS — вызываются один раз после деплоя
-    // =========================================================
 
     pub fn init_initialize_pool_comp_def(ctx: Context<InitInitializePoolCompDef>) -> Result<()> {
         init_comp_def(
@@ -90,9 +82,6 @@ pub mod arcium_hello_world {
         Ok(())
     }
 
-    // =========================================================
-    // INITIALIZE LIQUIDITY POOL
-    // =========================================================
     pub fn initialize_liquidity_pool(
         ctx: Context<InitializeLiquidityPool>,
         computation_offset: u64,
@@ -103,9 +92,6 @@ pub mod arcium_hello_world {
         pubkey: [u8; 32],
         nonce: u128,
     ) -> Result<()> {
-        // ИСПРАВЛЕНИЕ borrow checker: вычисляем pool_key ДО создания &mut заимствования.
-        // Rust не разрешает одновременно иметь &mut pool и &pool (для .key()) в одном scope.
-        // Решение: скопировать key() в локальную переменную до &mut.
         let pool_key = ctx.accounts.pool.key();
         let (_, pool_authority_bump) = Pubkey::find_program_address(
             &[b"pool_authority", pool_key.as_ref()],
@@ -114,7 +100,7 @@ pub mod arcium_hello_world {
 
         let pool = &mut ctx.accounts.pool;
         pool.bump = ctx.bumps.pool;
-        pool.pool_authority_bump = pool_authority_bump; // отдельный bump для pool_authority PDA
+        pool.pool_authority_bump = pool_authority_bump;
         pool.token_a_mint = ctx.accounts.token_a_mint.key();
         pool.token_b_mint = ctx.accounts.token_b_mint.key();
         pool.lp_mint = ctx.accounts.lp_mint.key();
@@ -162,9 +148,6 @@ pub mod arcium_hello_world {
             .encrypted_u64(ciphertext_b)
             .build();
 
-        // Ключи нужных кастомных callback аккаунтов собираем до queue_computation.
-        // MPC кластер использует этот список чтобы построить callback транзакцию.
-        // Порядок должен совпадать с полями в InitializePoolCallback ПОСЛЕ стандартных 6.
         let lp_mint_key = ctx.accounts.lp_mint.key();
         let user_lp_token_key = ctx.accounts.user_lp_token.key();
         let pool_authority_key = Pubkey::create_program_address(
@@ -241,9 +224,6 @@ pub mod arcium_hello_world {
         Ok(())
     }
 
-    // =========================================================
-    // ADD LIQUIDITY
-    // =========================================================
     pub fn add_liquidity_to_pool(
         ctx: Context<AddLiquidityToPool>,
         computation_offset: u64,
@@ -273,8 +253,6 @@ pub mod arcium_hello_world {
 
         require!(lp_minted > 0, ErrorCode::InsufficientLiquidity);
         pool.pending_lp_mint = lp_minted;
-        // Сохраняем суммы для callback — там нет typed TokenAccount,
-        // поэтому обновляем hints через эти значения, а не через vault.amount
         pool.pending_add_a = amount_a;
         pool.pending_add_b = amount_b;
 
@@ -322,7 +300,6 @@ pub mod arcium_hello_world {
         pool.reserve_pubkey = pubkey;
         pool.reserve_nonce = nonce.to_le_bytes();
 
-        // Кастомные аккаунты для AddLiquidityCallback
         let pool_key_al = ctx.accounts.pool.key();
         let pool_auth_al = Pubkey::create_program_address(
             &[b"pool_authority", pool_key_al.as_ref(), &[ctx.accounts.pool.pool_authority_bump]],
@@ -372,7 +349,6 @@ pub mod arcium_hello_world {
         pool.encrypted_reserve_b = o.field_1.ciphertexts[0];
         pool.reserve_nonce = o.field_0.nonce.to_le_bytes();
 
-        // Обновляем hints через известные суммы (не нужен typed TokenAccount)
         pool.reserve_a_hint = pool.reserve_a_hint.saturating_add(pool.pending_add_a);
         pool.reserve_b_hint = pool.reserve_b_hint.saturating_add(pool.pending_add_b);
         pool.pending_add_a = 0;
@@ -411,9 +387,6 @@ pub mod arcium_hello_world {
         Ok(())
     }
 
-    // =========================================================
-    // REMOVE LIQUIDITY
-    // =========================================================
     pub fn remove_liquidity_from_pool(
         ctx: Context<RemoveLiquidityFromPool>,
         computation_offset: u64,
@@ -470,7 +443,6 @@ pub mod arcium_hello_world {
         pool.reserve_pubkey = pubkey;
         pool.reserve_nonce = nonce.to_le_bytes();
 
-        // Кастомные аккаунты для RemoveLiquidityCallback
         let pool_key_rl = ctx.accounts.pool.key();
         let pool_auth_rl = Pubkey::create_program_address(
             &[b"pool_authority", pool_key_rl.as_ref(), &[ctx.accounts.pool.pool_authority_bump]],
@@ -567,15 +539,12 @@ pub mod arcium_hello_world {
         Ok(())
     }
 
-    // =========================================================
-    // SWAP (MEV-protected)
-    // =========================================================
     pub fn swap(
         ctx: Context<Swap>,
         computation_offset: u64,
-        amount_in: u64,            // plaintext — для SPL Transfer прямо сейчас
-        a_to_b: bool,              // plaintext направление
-        ciphertext_in: [u8; 32],  // amount_in зашифрованный — для MPC верификации
+        amount_in: u64,
+        a_to_b: bool,
+        ciphertext_in: [u8; 32],
         pubkey: [u8; 32],
         nonce: u128,
     ) -> Result<()> {
@@ -603,7 +572,6 @@ pub mod arcium_hello_world {
             pool.reserve_a_hint = pool.reserve_a_hint.saturating_sub(amount_out);
         }
 
-        // Забираем token_in от пользователя сразу
         if a_to_b {
             token::transfer(
                 CpiContext::new(
@@ -645,14 +613,13 @@ pub mod arcium_hello_world {
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_in)
-            .plaintext_u64(amount_out)  // передаём on-chain расчёт в circuit как plaintext
+            .plaintext_u64(amount_out)
             .plaintext_u8(a_to_b_u8)
             .build();
 
         pool.reserve_pubkey = pubkey;
         pool.reserve_nonce = nonce.to_le_bytes();
 
-        // Кастомные аккаунты для SwapCallback
         let pool_key_sw = ctx.accounts.pool.key();
         let pool_auth_sw = Pubkey::create_program_address(
             &[b"pool_authority", pool_key_sw.as_ref(), &[ctx.accounts.pool.pool_authority_bump]],
@@ -710,7 +677,6 @@ pub mod arcium_hello_world {
         let seeds: &[&[u8]] = &[b"pool_authority", pool_key.as_ref(), &bump_seed];
         let signer = &[seeds];
 
-        // Отправляем token_out пользователю
         if a_to_b {
             token::transfer(
                 CpiContext::new_with_signer(
@@ -739,9 +705,6 @@ pub mod arcium_hello_world {
             )?;
         }
 
-        // Hints уже были обновлены в swap инструкции до queue_computation,
-        // поэтому здесь ничего делать не надо.
-
         emit!(SwapEvent {
             pool: pool_key,
             user: pool.pending_swap_user,
@@ -755,14 +718,10 @@ pub mod arcium_hello_world {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ACCOUNT STRUCTS
-// ─────────────────────────────────────────────────────────────────────────────
-
 #[account]
 pub struct LiquidityPool {
     pub bump: u8,
-    pub pool_authority_bump: u8, // ИСПРАВЛЕНИЕ: отдельный bump для pool_authority PDA
+    pub pool_authority_bump: u8,
 
     pub token_a_mint: Pubkey,
     pub token_b_mint: Pubkey,
@@ -772,11 +731,9 @@ pub struct LiquidityPool {
     pub encrypted_reserve_a: [u8; 32],
     pub encrypted_reserve_b: [u8; 32],
 
-    // Ключ шифрования текущих encrypted_reserve_*
     pub reserve_pubkey: [u8; 32],
     pub reserve_nonce: [u8; 16],
 
-    // Plaintext оценки резервов для on-chain расчётов LP и swapов
     pub reserve_a_hint: u64,
     pub reserve_b_hint: u64,
 
@@ -789,28 +746,13 @@ pub struct LiquidityPool {
     pub pending_swap_user: Pubkey,
     pub pending_swap_a_to_b: bool,
 
-    // Суммы добавляемой ликвидности — сохраняем между instruction и callback
-    // чтобы обновить reserve hints без чтения vault balance (не нужен TypedAccount)
     pub pending_add_a: u64,
     pub pending_add_b: u64,
 }
 
 impl LiquidityPool {
-    // LEN = discriminator(8) + bump(1) + pool_authority_bump(1)
-    //   + token_a_mint(32) + token_b_mint(32) + lp_mint(32) + authority(32)
-    //   + encrypted_reserve_a(32) + encrypted_reserve_b(32)
-    //   + reserve_pubkey(32) + reserve_nonce(16)
-    //   + reserve_a_hint(8) + reserve_b_hint(8)
-    //   + lp_supply(8) + pending_lp_mint(8)
-    //   + pending_withdraw_a(8) + pending_withdraw_b(8)
-    //   + pending_swap_amount_out(8) + pending_swap_user(32) + pending_swap_a_to_b(1)
-    //   + pending_add_a(8) + pending_add_b(8)
     pub const LEN: usize = 8 + 1 + 1 + 32 + 32 + 32 + 32 + 32 + 32 + 32 + 16 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 32 + 1 + 8 + 8;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CONTEXT STRUCTS
-// ─────────────────────────────────────────────────────────────────────────────
 
 #[queue_computation_accounts("initialize_pool", authority)]
 #[derive(Accounts)]
@@ -845,6 +787,9 @@ pub struct InitializeLiquidityPool<'info> {
     /// CHECK:
     #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_lp_token: UncheckedAccount<'info>,
 
     #[account(init_if_needed, space = 9, payer = authority, seeds = [&SIGN_PDA_SEED], bump)]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
@@ -884,7 +829,7 @@ pub struct InitializePoolCallback<'info> {
     /// CHECK:
     #[account(mut)]
     pub user_lp_token: UncheckedAccount<'info>,
-    /// CHECK: pool_authority PDA с правильным bump
+    /// CHECK:
     #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
     pub pool_authority: UncheckedAccount<'info>,
     pub arcium_program: Program<'info, Arcium>,
@@ -923,6 +868,9 @@ pub struct AddLiquidityToPool<'info> {
     /// CHECK:
     #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_lp_token: UncheckedAccount<'info>,
     #[account(init_if_needed, space = 9, payer = user, seeds = [&SIGN_PDA_SEED], bump)]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
     #[account(address = derive_mxe_pda!())]
@@ -963,12 +911,10 @@ pub struct AddLiquidityCallback<'info> {
     /// CHECK:
     #[account(mut)]
     pub user_lp_token: UncheckedAccount<'info>,
-    // UncheckedAccount — anchor-spl 0.32 требует InterfaceAccount для typed token accounts,
-    // но нам .amount здесь уже не нужен (используем pending_add_* из pool state)
-    /// CHECK: pool vault A
+    /// CHECK:
     #[account(mut)]
     pub pool_token_a: UncheckedAccount<'info>,
-    /// CHECK: pool vault B
+    /// CHECK:
     #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
     /// CHECK:
@@ -1004,6 +950,18 @@ pub struct RemoveLiquidityFromPool<'info> {
     /// CHECK:
     #[account(mut)]
     pub user_lp_token: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_b: UncheckedAccount<'info>,
     #[account(init_if_needed, space = 9, payer = user, seeds = [&SIGN_PDA_SEED], bump)]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
     #[account(address = derive_mxe_pda!())]
@@ -1127,11 +1085,10 @@ pub struct SwapCallback<'info> {
     /// CHECK:
     #[account(mut)]
     pub user_token_b: UncheckedAccount<'info>,
-    // UncheckedAccount — hints обновляются в swap инструкции, .amount здесь не нужен
-    /// CHECK: pool vault A
+    /// CHECK:
     #[account(mut)]
     pub pool_token_a: UncheckedAccount<'info>,
-    /// CHECK: pool vault B
+    /// CHECK:
     #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
     /// CHECK:
@@ -1153,8 +1110,6 @@ pub struct SwapCallback<'info> {
     pub token_program: UncheckedAccount<'info>,
 }
 
-// Init comp def structs
-
 #[init_computation_definition_accounts("initialize_pool", payer)]
 #[derive(Accounts)]
 pub struct InitInitializePoolCompDef<'info> {
@@ -1165,10 +1120,10 @@ pub struct InitInitializePoolCompDef<'info> {
     /// CHECK:
     #[account(mut)]
     pub comp_def_account: UncheckedAccount<'info>,
-    /// CHECK: Address Lookup Table managed by Arcium
+    /// CHECK:
     #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
     pub address_lookup_table: UncheckedAccount<'info>,
-    /// CHECK: Address Lookup Table program
+    /// CHECK:
     #[account(address = LUT_PROGRAM_ID)]
     pub lut_program: UncheckedAccount<'info>,
     pub arcium_program: Program<'info, Arcium>,
@@ -1185,10 +1140,10 @@ pub struct InitAddLiquidityCompDef<'info> {
     /// CHECK:
     #[account(mut)]
     pub comp_def_account: UncheckedAccount<'info>,
-    /// CHECK: Address Lookup Table managed by Arcium
+    /// CHECK:
     #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
     pub address_lookup_table: UncheckedAccount<'info>,
-    /// CHECK: Address Lookup Table program
+    /// CHECK:
     #[account(address = LUT_PROGRAM_ID)]
     pub lut_program: UncheckedAccount<'info>,
     pub arcium_program: Program<'info, Arcium>,
@@ -1205,10 +1160,10 @@ pub struct InitRemoveLiquidityCompDef<'info> {
     /// CHECK:
     #[account(mut)]
     pub comp_def_account: UncheckedAccount<'info>,
-    /// CHECK: Address Lookup Table managed by Arcium
+    /// CHECK:
     #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
     pub address_lookup_table: UncheckedAccount<'info>,
-    /// CHECK: Address Lookup Table program
+    /// CHECK:
     #[account(address = LUT_PROGRAM_ID)]
     pub lut_program: UncheckedAccount<'info>,
     pub arcium_program: Program<'info, Arcium>,
@@ -1225,19 +1180,15 @@ pub struct InitSwapCompDef<'info> {
     /// CHECK:
     #[account(mut)]
     pub comp_def_account: UncheckedAccount<'info>,
-    /// CHECK: Address Lookup Table managed by Arcium
+    /// CHECK:
     #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
     pub address_lookup_table: UncheckedAccount<'info>,
-    /// CHECK: Address Lookup Table program
+    /// CHECK:
     #[account(address = LUT_PROGRAM_ID)]
     pub lut_program: UncheckedAccount<'info>,
     pub arcium_program: Program<'info, Arcium>,
     pub system_program: Program<'info, System>,
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EVENTS
-// ─────────────────────────────────────────────────────────────────────────────
 
 #[event]
 pub struct PoolInitializedEvent {
@@ -1275,10 +1226,6 @@ pub struct SwapEvent {
     pub encrypted_reserve_a: [u8; 32],
     pub encrypted_reserve_b: [u8; 32],
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ERRORS
-// ─────────────────────────────────────────────────────────────────────────────
 
 #[error_code]
 pub enum ErrorCode {
