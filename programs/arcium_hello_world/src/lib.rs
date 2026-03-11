@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, MintTo, Transfer, Burn, TokenAccount, Token, Mint};
+use anchor_spl::token::{self, MintTo, Transfer, Burn};
 use arcium_anchor::prelude::*;
 use arcium_anchor::LUT_PROGRAM_ID;
 use arcium_client::idl::arcium::types::{CircuitSource, OffChainCircuitSource, CallbackAccount};
@@ -10,7 +10,7 @@ const COMP_DEF_OFFSET_ADD_LIQ: u32 = comp_def_offset("add_liquidity");
 const COMP_DEF_OFFSET_REMOVE_LIQ: u32 = comp_def_offset("remove_liquidity");
 const COMP_DEF_OFFSET_SWAP: u32 = comp_def_offset("swap");
 
-declare_id!("EHiuDFhk1LsMeJVWA9YH2N1MHsmYuEoAdbUynYH3rLPn");
+declare_id!("Doi5dYjA1BYW9YBRxc6YBQ6ZeAyChiNERd9u3xoF8YYB");
 
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
@@ -105,7 +105,6 @@ pub mod arcium_hello_world {
         pool.token_b_mint = ctx.accounts.token_b_mint.key();
         pool.lp_mint = ctx.accounts.lp_mint.key();
         pool.authority = ctx.accounts.authority.key();
-
         pool.reserve_pubkey = pubkey;
         pool.reserve_nonce = nonce.to_le_bytes();
         pool.reserve_a_hint = initial_amount_a;
@@ -139,7 +138,6 @@ pub mod arcium_hello_world {
 
         ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
 
-        // ИСПРАВЛЕНО: один pubkey/nonce для обоих ciphertext'ов (Enc<Shared, (u64, u64)>)
         let args = ArgBuilder::new()
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
@@ -190,7 +188,6 @@ pub mod arcium_hello_world {
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
-        // ИСПРАВЛЕНО: один field_0 с двумя ciphertexts (Enc<Shared, (u64, u64)>)
         let pool = &mut ctx.accounts.pool;
         pool.encrypted_reserve_a = o.ciphertexts[0];
         pool.encrypted_reserve_b = o.ciphertexts[1];
@@ -283,8 +280,6 @@ pub mod arcium_hello_world {
 
         let reserve_nonce = u128::from_le_bytes(pool.reserve_nonce);
 
-        // ИСПРАВЛЕНО: резервы — один pubkey/nonce для двух ciphertexts (Enc<Shared, (u64, u64)>)
-        //             amounts — один pubkey/nonce для двух ciphertexts (Enc<Shared, (u64, u64)>)
         let args = ArgBuilder::new()
             .x25519_pubkey(pool.reserve_pubkey)
             .plaintext_u128(reserve_nonce)
@@ -295,9 +290,6 @@ pub mod arcium_hello_world {
             .encrypted_u64(ciphertext_a)
             .encrypted_u64(ciphertext_b)
             .build();
-
-        pool.reserve_pubkey = pubkey;
-        pool.reserve_nonce = nonce.to_le_bytes();
 
         let pool_key_al = ctx.accounts.pool.key();
         let pool_auth_al = Pubkey::create_program_address(
@@ -343,7 +335,6 @@ pub mod arcium_hello_world {
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
-        // ИСПРАВЛЕНО: один field_0 с двумя ciphertexts (Enc<Shared, (u64, u64)>)
         let pool = &mut ctx.accounts.pool;
         pool.encrypted_reserve_a = o.ciphertexts[0];
         pool.encrypted_reserve_b = o.ciphertexts[1];
@@ -430,7 +421,6 @@ pub mod arcium_hello_world {
 
         let reserve_nonce = u128::from_le_bytes(pool.reserve_nonce);
 
-        // ИСПРАВЛЕНО: резервы — один pubkey/nonce для двух ciphertexts (Enc<Shared, (u64, u64)>)
         let args = ArgBuilder::new()
             .x25519_pubkey(pool.reserve_pubkey)
             .plaintext_u128(reserve_nonce)
@@ -439,9 +429,6 @@ pub mod arcium_hello_world {
             .plaintext_u64(amount_a_out)
             .plaintext_u64(amount_b_out)
             .build();
-
-        pool.reserve_pubkey = pubkey;
-        pool.reserve_nonce = nonce.to_le_bytes();
 
         let pool_key_rl = ctx.accounts.pool.key();
         let pool_auth_rl = Pubkey::create_program_address(
@@ -487,7 +474,6 @@ pub mod arcium_hello_world {
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
-        // ИСПРАВЛЕНО: один field_0 с двумя ciphertexts (Enc<Shared, (u64, u64)>)
         let pool = &mut ctx.accounts.pool;
         pool.encrypted_reserve_a = o.ciphertexts[0];
         pool.encrypted_reserve_b = o.ciphertexts[1];
@@ -604,7 +590,6 @@ pub mod arcium_hello_world {
         let reserve_nonce = u128::from_le_bytes(pool.reserve_nonce);
         let a_to_b_u8: u8 = if a_to_b { 1 } else { 0 };
 
-        // ИСПРАВЛЕНО: резервы — один pubkey/nonce для двух ciphertexts (Enc<Shared, (u64, u64)>)
         let args = ArgBuilder::new()
             .x25519_pubkey(pool.reserve_pubkey)
             .plaintext_u128(reserve_nonce)
@@ -616,9 +601,6 @@ pub mod arcium_hello_world {
             .plaintext_u64(amount_out)
             .plaintext_u8(a_to_b_u8)
             .build();
-
-        pool.reserve_pubkey = pubkey;
-        pool.reserve_nonce = nonce.to_le_bytes();
 
         let pool_key_sw = ctx.accounts.pool.key();
         let pool_auth_sw = Pubkey::create_program_address(
@@ -663,7 +645,6 @@ pub mod arcium_hello_world {
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
-        // ИСПРАВЛЕНО: один field_0 с двумя ciphertexts (Enc<Shared, (u64, u64)>)
         let pool = &mut ctx.accounts.pool;
         pool.encrypted_reserve_a = o.ciphertexts[0];
         pool.encrypted_reserve_b = o.ciphertexts[1];
@@ -671,6 +652,7 @@ pub mod arcium_hello_world {
 
         let amount_out = pool.pending_swap_amount_out;
         let a_to_b = pool.pending_swap_a_to_b;
+        let swap_user = pool.pending_swap_user;
         pool.pending_swap_amount_out = 0;
 
         let pool_key = pool.key();
@@ -708,7 +690,7 @@ pub mod arcium_hello_world {
 
         emit!(SwapEvent {
             pool: pool_key,
-            user: pool.pending_swap_user,
+            user: swap_user,
             a_to_b,
             amount_out,
             encrypted_reserve_a: pool.encrypted_reserve_a,
@@ -723,30 +705,23 @@ pub mod arcium_hello_world {
 pub struct LiquidityPool {
     pub bump: u8,
     pub pool_authority_bump: u8,
-
     pub token_a_mint: Pubkey,
     pub token_b_mint: Pubkey,
     pub lp_mint: Pubkey,
     pub authority: Pubkey,
-
     pub encrypted_reserve_a: [u8; 32],
     pub encrypted_reserve_b: [u8; 32],
-
     pub reserve_pubkey: [u8; 32],
     pub reserve_nonce: [u8; 16],
-
     pub reserve_a_hint: u64,
     pub reserve_b_hint: u64,
-
     pub lp_supply: u64,
     pub pending_lp_mint: u64,
     pub pending_withdraw_a: u64,
     pub pending_withdraw_b: u64,
-
     pub pending_swap_amount_out: u64,
     pub pending_swap_user: Pubkey,
     pub pending_swap_a_to_b: bool,
-
     pub pending_add_a: u64,
     pub pending_add_b: u64,
 }
@@ -761,14 +736,12 @@ impl LiquidityPool {
 pub struct InitializeLiquidityPool<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-
     #[account(
         init, payer = authority, space = LiquidityPool::LEN,
         seeds = [b"pool", token_a_mint.key().as_ref(), token_b_mint.key().as_ref()],
         bump
     )]
     pub pool: Account<'info, LiquidityPool>,
-
     /// CHECK:
     pub token_a_mint: UncheckedAccount<'info>,
     /// CHECK:
@@ -791,7 +764,6 @@ pub struct InitializeLiquidityPool<'info> {
     /// CHECK:
     #[account(mut)]
     pub user_lp_token: UncheckedAccount<'info>,
-
     #[account(init_if_needed, space = 9, payer = authority, seeds = [&SIGN_PDA_SEED], bump)]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
     #[account(address = derive_mxe_pda!())]
@@ -1028,7 +1000,6 @@ pub struct RemoveLiquidityCallback<'info> {
     pub token_program: UncheckedAccount<'info>,
 }
 
-
 #[queue_computation_accounts("swap", user)]
 #[derive(Accounts)]
 #[instruction(computation_offset: u64)]
@@ -1111,7 +1082,6 @@ pub struct SwapCallback<'info> {
     /// CHECK:
     pub token_program: UncheckedAccount<'info>,
 }
-
 
 #[init_computation_definition_accounts("initialize_pool", payer)]
 #[derive(Accounts)]
