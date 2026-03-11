@@ -1,0 +1,190 @@
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  height: 64px;
+  border-bottom: 1px solid var(--border);
+  background: var(--header-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.header-left { display: flex; align-items: center; gap: 2.5rem; }
+
+.logo { display: flex; align-items: center; gap: 0.55rem; }
+
+.logo-icon {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  filter: drop-shadow(0 0 8px var(--accent-glow));
+}
+
+.logo-text {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+
+.logo-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.55rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  border-radius: 3px;
+  padding: 2px 5px;
+  opacity: 0.8;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--tab-bg);
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid var(--border);
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: 'Syne', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.02em;
+}
+
+.tab-btn:hover { color: var(--text-primary); background: var(--tab-hover); }
+.tab-btn.active { background: var(--tab-active); color: var(--text-primary); box-shadow: 0 1px 8px var(--shadow-sm); }
+.tab-icon { font-size: 0.9rem; opacity: 0.8; }
+
+.header-right { display: flex; align-items: center; gap: 0.75rem; }
+
+.network-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  background: var(--pill-bg);
+  border: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+}
+
+.net-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e88;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.theme-toggle {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--pill-bg);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.btn-connect {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.1rem;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font-family: 'Syne', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.02em;
+}
+
+.btn-connect:hover {
+  background: var(--accent);
+  color: var(--btn-text);
+  box-shadow: 0 0 20px var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.wallet-connected { display: flex; align-items: center; gap: 0.5rem; }
+
+.wallet-addr {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--pill-bg);
+}
+
+.wallet-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+.wallet-short {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+
+.btn-disconnect {
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-danger);
+  background: transparent;
+  color: var(--text-danger);
+  font-family: 'Syne', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-disconnect:hover {
+  background: var(--bg-danger);
+  color: #fff;
+}
