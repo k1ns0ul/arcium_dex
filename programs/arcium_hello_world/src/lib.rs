@@ -10,7 +10,7 @@ const COMP_DEF_OFFSET_ADD_LIQ: u32 = comp_def_offset("add_liquidity");
 const COMP_DEF_OFFSET_REMOVE_LIQ: u32 = comp_def_offset("remove_liquidity");
 const COMP_DEF_OFFSET_SWAP: u32 = comp_def_offset("swap");
 
-declare_id!("Doi5dYjA1BYW9YBRxc6YBQ6ZeAyChiNERd9u3xoF8YYB");
+declare_id!("Gi9PR19JmfJXSdatBfNLEiSV6EbvRcNaEDjD3xmxpppS");
 
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
