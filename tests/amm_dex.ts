@@ -326,7 +326,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
   // 2. INITIALIZE POOL
   // ──────────────────────────────────────────────────────────────
   it("2. Initialize encrypted liquidity pool", async function () {
-    this.timeout(1_800_000);
+    this.timeout(120_000);
     console.log("[Test 2] Initializing pool...");
 
     const privateKey = x25519.utils.randomSecretKey();
@@ -424,7 +424,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
   // 3. ADD LIQUIDITY
   // ──────────────────────────────────────────────────────────────
   it("3. Add liquidity to pool", async function () {
-    this.timeout(1_800_000);
+    this.timeout(120_000);
     console.log("[Test 3] Adding liquidity...");
 
     const lpBefore = Number(
@@ -501,7 +501,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
   // 4. SWAP A → B
   // ──────────────────────────────────────────────────────────────
   it("4. Swap token A → token B (MEV-protected)", async function () {
-    this.timeout(1_800_000);
+    this.timeout(120_000);
     console.log("[Test 4] Swap A → B...");
 
     const tokenBBefore = Number(
@@ -582,7 +582,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
   // 5. SWAP B → A
   // ──────────────────────────────────────────────────────────────
   it("5. Swap token B → token A (reverse)", async function () {
-    this.timeout(1_800_000);
+    this.timeout(120_000);
     console.log("[Test 5] Swap B → A...");
 
     const tokenABefore = Number(
@@ -654,7 +654,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
   // 6. REMOVE LIQUIDITY
   // ──────────────────────────────────────────────────────────────
   it("6. Remove liquidity from pool", async function () {
-    this.timeout(1_800_000);
+    this.timeout(120_000);
     console.log("[Test 6] Removing liquidity...");
 
     const lpBalance = Number(
