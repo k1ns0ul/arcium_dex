@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, MintTo, Transfer, Burn};
+use anchor_spl::token_2022::{self as token, MintTo, Transfer, Burn, Token2022};
 use arcium_anchor::prelude::*;
 use arcium_anchor::LUT_PROGRAM_ID;
 use arcium_client::idl::arcium::types::{CircuitSource, OffChainCircuitSource, CallbackAccount};
@@ -10,7 +10,7 @@ const COMP_DEF_OFFSET_ADD_LIQ: u32 = comp_def_offset("add_liquidity");
 const COMP_DEF_OFFSET_REMOVE_LIQ: u32 = comp_def_offset("remove_liquidity");
 const COMP_DEF_OFFSET_SWAP: u32 = comp_def_offset("swap");
 
-declare_id!("EJM8wChedczKgKiJ2GHZvk17Fw1X2rkEr7uoNcUDFk3f");
+declare_id!("ADSB7ZWiM2wPjhJgAZWKowyNHDiVV65nudo7gWcdWvTd");
 
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
@@ -662,39 +662,39 @@ pub struct InitializeLiquidityPool<'info> {
         bump
     )]
     pub pool: Account<'info, LiquidityPool>,
-    /// CHECK:
+    /// CHECK: Token-2022 mint
     pub token_a_mint: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 mint
     pub token_b_mint: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 LP mint
     #[account(mut)]
     pub lp_mint: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 LP account
     #[account(mut)]
     pub user_lp_token: UncheckedAccount<'info>,
     #[account(init_if_needed, space = 9, payer = authority, seeds = [&SIGN_PDA_SEED], bump)]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Box<Account<'info, MXEAccount>>,
-    /// CHECK:
+    /// CHECK: Arcium mempool PDA
     #[account(mut, address = derive_mempool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub mempool_account: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Arcium execution pool PDA
     #[account(mut, address = derive_execpool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub executing_pool: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Arcium computation PDA
     #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account, ErrorCode::ClusterNotSet))]
     pub computation_account: UncheckedAccount<'info>,
     #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_INIT_POOL))]
@@ -706,8 +706,7 @@ pub struct InitializeLiquidityPool<'info> {
     #[account(mut, address = ARCIUM_CLOCK_ACCOUNT_ADDRESS)]
     pub clock_account: Box<Account<'info, ClockAccount>>,
     pub system_program: Program<'info, System>,
-    /// CHECK:
-    pub token_program: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token2022>,
     pub arcium_program: Program<'info, Arcium>,
 }
 
@@ -719,26 +718,25 @@ pub struct InitializePoolCallback<'info> {
     pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Account<'info, MXEAccount>,
-    /// CHECK:
+    /// CHECK: Arcium computation account
     pub computation_account: UncheckedAccount<'info>,
     #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub cluster_account: Account<'info, Cluster>,
-    /// CHECK:
+    /// CHECK: Solana instructions sysvar
     #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
     pub instructions_sysvar: AccountInfo<'info>,
     #[account(mut)]
     pub pool: Account<'info, LiquidityPool>,
-    /// CHECK:
+    /// CHECK: Token-2022 LP mint
     #[account(mut)]
     pub lp_mint: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 LP account
     #[account(mut)]
     pub user_lp_token: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Pool authority PDA
     #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
     pub pool_authority: UncheckedAccount<'info>,
-    /// CHECK:
-    pub token_program: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token2022>,
 }
 
 #[queue_computation_accounts("add_liquidity", user)]
@@ -749,32 +747,32 @@ pub struct AddLiquidityToPool<'info> {
     pub user: Signer<'info>,
     #[account(mut)]
     pub pool: Account<'info, LiquidityPool>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 LP account
     #[account(mut)]
     pub user_lp_token: UncheckedAccount<'info>,
     #[account(init_if_needed, space = 9, payer = user, seeds = [&SIGN_PDA_SEED], bump)]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Account<'info, MXEAccount>,
-    /// CHECK:
+    /// CHECK: Arcium mempool PDA
     #[account(mut, address = derive_mempool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub mempool_account: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Arcium execution pool PDA
     #[account(mut, address = derive_execpool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub executing_pool: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Arcium computation PDA
     #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account, ErrorCode::ClusterNotSet))]
     pub computation_account: UncheckedAccount<'info>,
     #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_ADD_LIQ))]
@@ -786,8 +784,7 @@ pub struct AddLiquidityToPool<'info> {
     #[account(mut, address = ARCIUM_CLOCK_ACCOUNT_ADDRESS)]
     pub clock_account: Box<Account<'info, ClockAccount>>,
     pub system_program: Program<'info, System>,
-    /// CHECK:
-    pub token_program: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token2022>,
     pub arcium_program: Program<'info, Arcium>,
 }
 
@@ -799,32 +796,31 @@ pub struct AddLiquidityCallback<'info> {
     pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Account<'info, MXEAccount>,
-    /// CHECK:
+    /// CHECK: Arcium computation account
     pub computation_account: UncheckedAccount<'info>,
     #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub cluster_account: Account<'info, Cluster>,
-    /// CHECK:
+    /// CHECK: Solana instructions sysvar
     #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
     pub instructions_sysvar: AccountInfo<'info>,
     #[account(mut)]
     pub pool: Account<'info, LiquidityPool>,
     #[account(mut)]
     pub user: SystemAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 LP mint
     #[account(mut)]
     pub lp_mint: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 LP account
     #[account(mut)]
     pub user_lp_token: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     pub pool_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     pub pool_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Pool authority PDA
     #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
     pub pool_authority: UncheckedAccount<'info>,
-    /// CHECK:
-    pub token_program: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token2022>,
 }
 
 #[queue_computation_accounts("remove_liquidity", user)]
@@ -835,35 +831,35 @@ pub struct RemoveLiquidityFromPool<'info> {
     pub user: Signer<'info>,
     #[account(mut)]
     pub pool: Account<'info, LiquidityPool>,
-    /// CHECK:
+    /// CHECK: Token-2022 LP mint
     #[account(mut)]
     pub lp_mint: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 LP account
     #[account(mut)]
     pub user_lp_token: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
     #[account(init_if_needed, space = 9, payer = user, seeds = [&SIGN_PDA_SEED], bump)]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Account<'info, MXEAccount>,
-    /// CHECK:
+    /// CHECK: Arcium mempool PDA
     #[account(mut, address = derive_mempool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub mempool_account: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Arcium execution pool PDA
     #[account(mut, address = derive_execpool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub executing_pool: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Arcium computation PDA
     #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account, ErrorCode::ClusterNotSet))]
     pub computation_account: UncheckedAccount<'info>,
     #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_REMOVE_LIQ))]
@@ -875,8 +871,7 @@ pub struct RemoveLiquidityFromPool<'info> {
     #[account(mut, address = ARCIUM_CLOCK_ACCOUNT_ADDRESS)]
     pub clock_account: Box<Account<'info, ClockAccount>>,
     pub system_program: Program<'info, System>,
-    /// CHECK:
-    pub token_program: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token2022>,
     pub arcium_program: Program<'info, Arcium>,
 }
 
@@ -888,34 +883,33 @@ pub struct RemoveLiquidityCallback<'info> {
     pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Account<'info, MXEAccount>,
-    /// CHECK:
+    /// CHECK: Arcium computation account
     pub computation_account: UncheckedAccount<'info>,
     #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub cluster_account: Account<'info, Cluster>,
-    /// CHECK:
+    /// CHECK: Solana instructions sysvar
     #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
     pub instructions_sysvar: AccountInfo<'info>,
     #[account(mut)]
     pub pool: Account<'info, LiquidityPool>,
     #[account(mut)]
     pub user: SystemAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Pool authority PDA
     #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
     pub pool_authority: UncheckedAccount<'info>,
-    /// CHECK:
-    pub token_program: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token2022>,
 }
 
 #[queue_computation_accounts("swap", user)]
@@ -926,29 +920,29 @@ pub struct Swap<'info> {
     pub user: Signer<'info>,
     #[account(mut)]
     pub pool: Account<'info, LiquidityPool>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
     #[account(init_if_needed, space = 9, payer = user, seeds = [&SIGN_PDA_SEED], bump)]
     pub sign_pda_account: Account<'info, ArciumSignerAccount>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Account<'info, MXEAccount>,
-    /// CHECK:
+    /// CHECK: Arcium mempool PDA
     #[account(mut, address = derive_mempool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub mempool_account: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Arcium execution pool PDA
     #[account(mut, address = derive_execpool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub executing_pool: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Arcium computation PDA
     #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account, ErrorCode::ClusterNotSet))]
     pub computation_account: UncheckedAccount<'info>,
     #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_SWAP))]
@@ -960,8 +954,7 @@ pub struct Swap<'info> {
     #[account(mut, address = ARCIUM_CLOCK_ACCOUNT_ADDRESS)]
     pub clock_account: Box<Account<'info, ClockAccount>>,
     pub system_program: Program<'info, System>,
-    /// CHECK:
-    pub token_program: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token2022>,
     pub arcium_program: Program<'info, Arcium>,
 }
 
@@ -973,32 +966,31 @@ pub struct SwapCallback<'info> {
     pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
     #[account(address = derive_mxe_pda!())]
     pub mxe_account: Account<'info, MXEAccount>,
-    /// CHECK:
+    /// CHECK: Arcium computation account
     pub computation_account: UncheckedAccount<'info>,
     #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
     pub cluster_account: Account<'info, Cluster>,
-    /// CHECK:
+    /// CHECK: Solana instructions sysvar
     #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
     pub instructions_sysvar: AccountInfo<'info>,
     #[account(mut)]
     pub pool: Account<'info, LiquidityPool>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 account
     #[account(mut)]
     pub user_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_a: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Token-2022 pool vault
     #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Pool authority PDA
     #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
     pub pool_authority: UncheckedAccount<'info>,
-    /// CHECK:
-    pub token_program: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token2022>,
 }
 
 #[init_computation_definition_accounts("initialize_pool", payer)]
@@ -1008,13 +1000,13 @@ pub struct InitInitializePoolCompDef<'info> {
     pub payer: Signer<'info>,
     #[account(mut, address = derive_mxe_pda!())]
     pub mxe_account: Box<Account<'info, MXEAccount>>,
-    /// CHECK:
+    /// CHECK: Computation definition PDA
     #[account(mut)]
     pub comp_def_account: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Address lookup table
     #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
     pub address_lookup_table: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Address lookup table program
     #[account(address = LUT_PROGRAM_ID)]
     pub lut_program: UncheckedAccount<'info>,
     pub arcium_program: Program<'info, Arcium>,
@@ -1028,13 +1020,13 @@ pub struct InitAddLiquidityCompDef<'info> {
     pub payer: Signer<'info>,
     #[account(mut, address = derive_mxe_pda!())]
     pub mxe_account: Box<Account<'info, MXEAccount>>,
-    /// CHECK:
+    /// CHECK: Computation definition PDA
     #[account(mut)]
     pub comp_def_account: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Address lookup table
     #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
     pub address_lookup_table: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Address lookup table program
     #[account(address = LUT_PROGRAM_ID)]
     pub lut_program: UncheckedAccount<'info>,
     pub arcium_program: Program<'info, Arcium>,
@@ -1048,13 +1040,13 @@ pub struct InitRemoveLiquidityCompDef<'info> {
     pub payer: Signer<'info>,
     #[account(mut, address = derive_mxe_pda!())]
     pub mxe_account: Box<Account<'info, MXEAccount>>,
-    /// CHECK:
+    /// CHECK: Computation definition PDA
     #[account(mut)]
     pub comp_def_account: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Address lookup table
     #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
     pub address_lookup_table: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Address lookup table program
     #[account(address = LUT_PROGRAM_ID)]
     pub lut_program: UncheckedAccount<'info>,
     pub arcium_program: Program<'info, Arcium>,
@@ -1068,13 +1060,13 @@ pub struct InitSwapCompDef<'info> {
     pub payer: Signer<'info>,
     #[account(mut, address = derive_mxe_pda!())]
     pub mxe_account: Box<Account<'info, MXEAccount>>,
-    /// CHECK:
+    /// CHECK: Computation definition PDA
     #[account(mut)]
     pub comp_def_account: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Address lookup table
     #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
     pub address_lookup_table: UncheckedAccount<'info>,
-    /// CHECK:
+    /// CHECK: Address lookup table program
     #[account(address = LUT_PROGRAM_ID)]
     pub lut_program: UncheckedAccount<'info>,
     pub arcium_program: Program<'info, Arcium>,

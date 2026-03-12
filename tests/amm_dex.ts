@@ -1,11 +1,3 @@
-// tests/amm_dex.ts
-//
-// Запуск (без пересборки, если уже собрано):
-//   arcium test --cluster devnet --skip-build
-//
-// С пересборкой:
-//   arcium test --cluster devnet
-
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import {
@@ -15,12 +7,15 @@ import {
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import {
-  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   createMint,
   getOrCreateAssociatedTokenAccount,
   mintTo,
   getAccount,
   createInitializeAccountInstruction,
+  getMintLen,
+  ExtensionType,
+  createInitializeMintInstruction,
 } from "@solana/spl-token";
 import { ArciumHelloWorld } from "../target/types/arcium_hello_world";
 import { randomBytes } from "crypto";
@@ -41,18 +36,14 @@ import {
   getFeePoolAccAddress,
   getClockAccAddress,
   getArciumEnv,
-  getLookupTableAddress, // v0.7.0: Address Lookup Table для InitCompDef
-  getArciumProgram,      // v0.7.0: нужен для fetch mxeAccount.lutOffsetSlot
+  getLookupTableAddress,
+  getArciumProgram,
   x25519,
 } from "@arcium-hq/client";
 import { AddressLookupTableProgram } from "@solana/web3.js";
 import * as fs from "fs";
 import * as os from "os";
 import { expect } from "chai";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
 
 function readKpJson(path: string): Keypair {
   const file = fs.readFileSync(path);
@@ -77,7 +68,6 @@ async function getMXEPublicKeyWithRetry(
   throw new Error("Failed to fetch MXE public key");
 }
 
-// Возвращает compDefPDA и проверяет существование — true = уже есть
 async function compDefExists(
   program: Program<ArciumHelloWorld>,
   provider: anchor.AnchorProvider,
@@ -93,11 +83,7 @@ async function compDefExists(
   return [pda, info !== null];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TEST SUITE
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("Encrypted AMM DEX — Devnet", () => {
+describe("Encrypted AMM DEX — Token-2022", () => {
   const RPC_URL =
     "https://devnet.helius-rpc.com/?api-key=e229b931-070b-490c-b33b-c2f1d23747e8";
 
@@ -119,7 +105,6 @@ describe("Encrypted AMM DEX — Devnet", () => {
     .ArciumHelloWorld as Program<ArciumHelloWorld>;
   const arciumEnv = getArciumEnv();
 
-  // ── shared state ──
   let tokenAMint: PublicKey;
   let tokenBMint: PublicKey;
   let lpMint: PublicKey;
@@ -135,11 +120,9 @@ describe("Encrypted AMM DEX — Devnet", () => {
   console.log("\n" + "=".repeat(60));
   console.log("Program:", program.programId.toString());
   console.log("Wallet:", wallet.publicKey.toString());
+  console.log("Token Program: TOKEN_2022_PROGRAM_ID");
   console.log("=".repeat(60) + "\n");
 
-  // ──────────────────────────────────────────────────────────────
-  // BEFORE — создаём токены и аккаунты
-  // ──────────────────────────────────────────────────────────────
   before(async function () {
     this.timeout(120_000);
 
@@ -149,13 +132,51 @@ describe("Encrypted AMM DEX — Devnet", () => {
       throw new Error("Insufficient SOL. Run: solana airdrop 2 --url devnet");
     }
 
-    console.log("\n[Setup] Creating token mints...");
-    tokenAMint = await createMint(
-      connection, wallet.payer, wallet.publicKey, null, 9
+    console.log("\n[Setup] Creating Token-2022 mints...");
+    
+    const mintKeypairA = Keypair.generate();
+    const mintKeypairB = Keypair.generate();
+    
+    const extensions = [];
+    const mintLen = getMintLen(extensions);
+    const lamports = await connection.getMinimumBalanceForRentExemption(mintLen);
+
+    const createMintTx = new anchor.web3.Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: wallet.publicKey,
+        newAccountPubkey: mintKeypairA.publicKey,
+        space: mintLen,
+        lamports,
+        programId: TOKEN_2022_PROGRAM_ID,
+      }),
+      createInitializeMintInstruction(
+        mintKeypairA.publicKey,
+        9,
+        wallet.publicKey,
+        null,
+        TOKEN_2022_PROGRAM_ID
+      ),
+      SystemProgram.createAccount({
+        fromPubkey: wallet.publicKey,
+        newAccountPubkey: mintKeypairB.publicKey,
+        space: mintLen,
+        lamports,
+        programId: TOKEN_2022_PROGRAM_ID,
+      }),
+      createInitializeMintInstruction(
+        mintKeypairB.publicKey,
+        9,
+        wallet.publicKey,
+        null,
+        TOKEN_2022_PROGRAM_ID
+      )
     );
-    tokenBMint = await createMint(
-      connection, wallet.payer, wallet.publicKey, null, 9
-    );
+
+    await provider.sendAndConfirm(createMintTx, [mintKeypairA, mintKeypairB]);
+    
+    tokenAMint = mintKeypairA.publicKey;
+    tokenBMint = mintKeypairB.publicKey;
+    
     console.log("  Token A:", tokenAMint.toString());
     console.log("  Token B:", tokenBMint.toString());
 
@@ -170,13 +191,27 @@ describe("Encrypted AMM DEX — Devnet", () => {
     console.log("  Pool PDA:", poolPDA.toString());
     console.log("  Pool Authority:", poolAuthority.toString());
 
-    // LP mint — authority = pool_authority PDA
-    lpMint = await createMint(
-      connection, wallet.payer, poolAuthority, null, 9
+    const lpMintKeypair = Keypair.generate();
+    const lpMintTx = new anchor.web3.Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: wallet.publicKey,
+        newAccountPubkey: lpMintKeypair.publicKey,
+        space: mintLen,
+        lamports,
+        programId: TOKEN_2022_PROGRAM_ID,
+      }),
+      createInitializeMintInstruction(
+        lpMintKeypair.publicKey,
+        9,
+        poolAuthority,
+        null,
+        TOKEN_2022_PROGRAM_ID
+      )
     );
+    await provider.sendAndConfirm(lpMintTx, [lpMintKeypair]);
+    lpMint = lpMintKeypair.publicKey;
     console.log("  LP Mint:", lpMint.toString());
 
-    // Pool vault accounts (обычные keypair-based token accounts)
     poolTokenAKp = Keypair.generate();
     poolTokenBKp = Keypair.generate();
 
@@ -187,24 +222,24 @@ describe("Encrypted AMM DEX — Devnet", () => {
         newAccountPubkey: poolTokenAKp.publicKey,
         space: 165,
         lamports: rentA,
-        programId: TOKEN_PROGRAM_ID,
+        programId: TOKEN_2022_PROGRAM_ID,
       }),
       SystemProgram.createAccount({
         fromPubkey: wallet.publicKey,
         newAccountPubkey: poolTokenBKp.publicKey,
         space: 165,
         lamports: rentA,
-        programId: TOKEN_PROGRAM_ID,
+        programId: TOKEN_2022_PROGRAM_ID,
       })
     );
     await provider.sendAndConfirm(createTx, [poolTokenAKp, poolTokenBKp]);
 
     const initTx = new anchor.web3.Transaction().add(
       createInitializeAccountInstruction(
-        poolTokenAKp.publicKey, tokenAMint, poolAuthority, TOKEN_PROGRAM_ID
+        poolTokenAKp.publicKey, tokenAMint, poolAuthority, TOKEN_2022_PROGRAM_ID
       ),
       createInitializeAccountInstruction(
-        poolTokenBKp.publicKey, tokenBMint, poolAuthority, TOKEN_PROGRAM_ID
+        poolTokenBKp.publicKey, tokenBMint, poolAuthority, TOKEN_2022_PROGRAM_ID
       )
     );
     await provider.sendAndConfirm(initTx);
@@ -212,31 +247,29 @@ describe("Encrypted AMM DEX — Devnet", () => {
     console.log("  Pool Token A vault:", poolTokenAKp.publicKey.toString());
     console.log("  Pool Token B vault:", poolTokenBKp.publicKey.toString());
 
-    // User ATAs
     userTokenA = (
       await getOrCreateAssociatedTokenAccount(
-        connection, wallet.payer, tokenAMint, wallet.publicKey
+        connection, wallet.payer, tokenAMint, wallet.publicKey, undefined, undefined, undefined, TOKEN_2022_PROGRAM_ID
       )
     ).address;
     userTokenB = (
       await getOrCreateAssociatedTokenAccount(
-        connection, wallet.payer, tokenBMint, wallet.publicKey
+        connection, wallet.payer, tokenBMint, wallet.publicKey, undefined, undefined, undefined, TOKEN_2022_PROGRAM_ID
       )
     ).address;
     userLpToken = (
       await getOrCreateAssociatedTokenAccount(
-        connection, wallet.payer, lpMint, wallet.publicKey
+        connection, wallet.payer, lpMint, wallet.publicKey, undefined, undefined, undefined, TOKEN_2022_PROGRAM_ID
       )
     ).address;
 
-    // Минт токенов пользователю — используем number, не bigint (ES2019 совместимо)
     await mintTo(
       connection, wallet.payer, tokenAMint, userTokenA,
-      wallet.publicKey, 10_000_000_000_000
+      wallet.publicKey, 10_000_000_000_000, [], undefined, TOKEN_2022_PROGRAM_ID
     );
     await mintTo(
       connection, wallet.payer, tokenBMint, userTokenB,
-      wallet.publicKey, 10_000_000_000_000
+      wallet.publicKey, 10_000_000_000_000, [], undefined, TOKEN_2022_PROGRAM_ID
     );
     console.log("  Minted 10000 tokens A and B to user");
 
@@ -244,9 +277,6 @@ describe("Encrypted AMM DEX — Devnet", () => {
     console.log("  MXE public key obtained\n");
   });
 
-  // ──────────────────────────────────────────────────────────────
-  // 1. INIT COMP DEFS
-  // ──────────────────────────────────────────────────────────────
   it("1. Initialize computation definitions", async function () {
     this.timeout(120_000);
     console.log("[Test 1] Init CompDefs...");
@@ -271,20 +301,15 @@ describe("Encrypted AMM DEX — Devnet", () => {
 
       console.log(`  Initializing '${circuitName}'...`);
 
-      // v0.7.0: init_computation_definition_accounts требует address_lookup_table и lut_program.
-      // getArciumProgram() — программа Arcium (не наша MXE программа!)
-      // Через неё читаем mxeAccount чтобы получить lutOffsetSlot
       const arciumProgram = getArciumProgram(provider as anchor.AnchorProvider);
       const mxeAcc = await arciumProgram.account.mxeAccount.fetch(mxeAccount);
       const addressLookupTable = getLookupTableAddress(program.programId, mxeAcc.lutOffsetSlot);
-      const lutProgram = AddressLookupTableProgram.programId;
 
-      // lutProgram НЕ передаём — Anchor подтягивает автоматически через аккаунт
       const sharedAccounts = {
         payer: owner.publicKey,
         mxeAccount,
         compDefAccount: compDefPDA,
-        addressLookupTable, // v0.7.0: обязателен для init_computation_definition_accounts
+        addressLookupTable,
         systemProgram: SystemProgram.programId,
       };
 
@@ -322,9 +347,6 @@ describe("Encrypted AMM DEX — Devnet", () => {
     console.log("All CompDefs ready");
   });
 
-  // ──────────────────────────────────────────────────────────────
-  // 2. INITIALIZE POOL
-  // ──────────────────────────────────────────────────────────────
   it("2. Initialize encrypted liquidity pool", async function () {
     this.timeout(120_000);
     console.log("[Test 2] Initializing pool...");
@@ -334,12 +356,10 @@ describe("Encrypted AMM DEX — Devnet", () => {
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
     const cipher = new RescueCipher(sharedSecret);
 
-    // Используем number, не bigint (ES2019 совместимо)
     const initialAmountA = 1_000_000_000;
     const initialAmountB = 1_000_000_000;
 
     const nonce = randomBytes(16);
-    // cipher.encrypt принимает bigint[], поэтому здесь BigInt() — не литерал n
     const ciphertexts = cipher.encrypt(
       [BigInt(initialAmountA), BigInt(initialAmountB)],
       nonce
@@ -358,7 +378,6 @@ describe("Encrypted AMM DEX — Devnet", () => {
       getArciumProgramId()
     );
 
-    // НЕ используем skipPreflight — он вызывает "Unknown action 'undefined'"
     const sig = await program.methods
       .initializeLiquidityPool(
         computationOffset,
@@ -393,7 +412,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
         clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .rpc({ commitment: "confirmed" });
@@ -406,29 +425,25 @@ describe("Encrypted AMM DEX — Devnet", () => {
     );
     console.log("  MPC finalized");
 
-    // Проверяем балансы — getAccount возвращает amount как bigint, конвертируем
-    const lpAcc = await getAccount(connection, userLpToken);
+    const lpAcc = await getAccount(connection, userLpToken, undefined, TOKEN_2022_PROGRAM_ID);
     const lpBalance = Number(lpAcc.amount);
     console.log(`  User LP balance: ${lpBalance}`);
     expect(lpBalance).to.be.gt(0);
 
-    const vaultA = await getAccount(connection, poolTokenAKp.publicKey);
-    const vaultB = await getAccount(connection, poolTokenBKp.publicKey);
+    const vaultA = await getAccount(connection, poolTokenAKp.publicKey, undefined, TOKEN_2022_PROGRAM_ID);
+    const vaultB = await getAccount(connection, poolTokenBKp.publicKey, undefined, TOKEN_2022_PROGRAM_ID);
     expect(Number(vaultA.amount)).to.equal(initialAmountA);
     expect(Number(vaultB.amount)).to.equal(initialAmountB);
 
     console.log("Pool initialized successfully");
   });
 
-  // ──────────────────────────────────────────────────────────────
-  // 3. ADD LIQUIDITY
-  // ──────────────────────────────────────────────────────────────
   it("3. Add liquidity to pool", async function () {
     this.timeout(120_000);
     console.log("[Test 3] Adding liquidity...");
 
     const lpBefore = Number(
-      (await getAccount(connection, userLpToken)).amount
+      (await getAccount(connection, userLpToken, undefined, TOKEN_2022_PROGRAM_ID)).amount
     );
 
     const privateKey = x25519.utils.randomSecretKey();
@@ -479,7 +494,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
         clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .rpc({ commitment: "confirmed" });
@@ -490,22 +505,19 @@ describe("Encrypted AMM DEX — Devnet", () => {
       provider, computationOffset, program.programId, "confirmed"
     );
 
-    const lpAfter = Number((await getAccount(connection, userLpToken)).amount);
+    const lpAfter = Number((await getAccount(connection, userLpToken, undefined, TOKEN_2022_PROGRAM_ID)).amount);
     const minted = lpAfter - lpBefore;
     console.log(`  LP before: ${lpBefore}, after: ${lpAfter}, minted: ${minted}`);
     expect(minted).to.be.gt(0);
     console.log("Liquidity added successfully");
   });
 
-  // ──────────────────────────────────────────────────────────────
-  // 4. SWAP A → B
-  // ──────────────────────────────────────────────────────────────
   it("4. Swap token A → token B (MEV-protected)", async function () {
     this.timeout(120_000);
     console.log("[Test 4] Swap A → B...");
 
     const tokenBBefore = Number(
-      (await getAccount(connection, userTokenB)).amount
+      (await getAccount(connection, userTokenB, undefined, TOKEN_2022_PROGRAM_ID)).amount
     );
 
     const privateKey = x25519.utils.randomSecretKey();
@@ -513,7 +525,6 @@ describe("Encrypted AMM DEX — Devnet", () => {
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
     const cipher = new RescueCipher(sharedSecret);
 
-    // amount_in зашифрован — MEV защита
     const amountIn = 100_000_000;
     const nonce = randomBytes(16);
     const [ciphertextIn] = cipher.encrypt([BigInt(amountIn)], nonce);
@@ -525,7 +536,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
       .swap(
         computationOffset,
         new anchor.BN(amountIn),
-        true, // a_to_b
+        true,
         Array.from(ciphertextIn),
         Array.from(publicKey),
         new anchor.BN(deserializeLE(nonce).toString())
@@ -550,7 +561,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
         clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .rpc({ commitment: "confirmed" });
@@ -562,14 +573,12 @@ describe("Encrypted AMM DEX — Devnet", () => {
     );
 
     const tokenBAfter = Number(
-      (await getAccount(connection, userTokenB)).amount
+      (await getAccount(connection, userTokenB, undefined, TOKEN_2022_PROGRAM_ID)).amount
     );
     const received = tokenBAfter - tokenBBefore;
     console.log(`  Received token B: ${received}`);
     expect(received).to.be.gt(0);
 
-    // AMM: при резервах 1B/1B, swap 100M A → ~90.7M B (0.3% fee)
-    // После add_liquidity резервы ~1.5B, но ratio одинаковое — результат похожий
     const expectedApprox = 85_000_000;
     const tolerance     = 10_000_000;
     expect(received).to.be.gt(expectedApprox - tolerance);
@@ -578,15 +587,12 @@ describe("Encrypted AMM DEX — Devnet", () => {
     console.log("Swap A→B successful");
   });
 
-  // ──────────────────────────────────────────────────────────────
-  // 5. SWAP B → A
-  // ──────────────────────────────────────────────────────────────
   it("5. Swap token B → token A (reverse)", async function () {
     this.timeout(120_000);
     console.log("[Test 5] Swap B → A...");
 
     const tokenABefore = Number(
-      (await getAccount(connection, userTokenA)).amount
+      (await getAccount(connection, userTokenA, undefined, TOKEN_2022_PROGRAM_ID)).amount
     );
 
     const privateKey = x25519.utils.randomSecretKey();
@@ -605,7 +611,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
       .swap(
         computationOffset,
         new anchor.BN(amountIn),
-        false, // b_to_a
+        false,
         Array.from(ciphertextIn),
         Array.from(publicKey),
         new anchor.BN(deserializeLE(nonce).toString())
@@ -630,7 +636,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
         clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .rpc({ commitment: "confirmed" });
@@ -642,7 +648,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
     );
 
     const tokenAAfter = Number(
-      (await getAccount(connection, userTokenA)).amount
+      (await getAccount(connection, userTokenA, undefined, TOKEN_2022_PROGRAM_ID)).amount
     );
     const received = tokenAAfter - tokenABefore;
     console.log(`  Received token A: ${received}`);
@@ -650,21 +656,18 @@ describe("Encrypted AMM DEX — Devnet", () => {
     console.log("Swap B→A successful");
   });
 
-  // ──────────────────────────────────────────────────────────────
-  // 6. REMOVE LIQUIDITY
-  // ──────────────────────────────────────────────────────────────
   it("6. Remove liquidity from pool", async function () {
     this.timeout(120_000);
     console.log("[Test 6] Removing liquidity...");
 
     const lpBalance = Number(
-      (await getAccount(connection, userLpToken)).amount
+      (await getAccount(connection, userLpToken, undefined, TOKEN_2022_PROGRAM_ID)).amount
     );
     const tokenABefore = Number(
-      (await getAccount(connection, userTokenA)).amount
+      (await getAccount(connection, userTokenA, undefined, TOKEN_2022_PROGRAM_ID)).amount
     );
     const tokenBBefore = Number(
-      (await getAccount(connection, userTokenB)).amount
+      (await getAccount(connection, userTokenB, undefined, TOKEN_2022_PROGRAM_ID)).amount
     );
 
     const lpToRemove = Math.floor(lpBalance / 2);
@@ -707,7 +710,7 @@ describe("Encrypted AMM DEX — Devnet", () => {
         clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .rpc({ commitment: "confirmed" });
@@ -718,9 +721,9 @@ describe("Encrypted AMM DEX — Devnet", () => {
       provider, computationOffset, program.programId, "confirmed"
     );
 
-    const tokenAAfter  = Number((await getAccount(connection, userTokenA)).amount);
-    const tokenBAfter  = Number((await getAccount(connection, userTokenB)).amount);
-    const lpAfter      = Number((await getAccount(connection, userLpToken)).amount);
+    const tokenAAfter  = Number((await getAccount(connection, userTokenA, undefined, TOKEN_2022_PROGRAM_ID)).amount);
+    const tokenBAfter  = Number((await getAccount(connection, userTokenB, undefined, TOKEN_2022_PROGRAM_ID)).amount);
+    const lpAfter      = Number((await getAccount(connection, userLpToken, undefined, TOKEN_2022_PROGRAM_ID)).amount);
 
     console.log(`  Received A: ${tokenAAfter - tokenABefore}`);
     console.log(`  Received B: ${tokenBAfter - tokenBBefore}`);

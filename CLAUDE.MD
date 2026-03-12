@@ -10,7 +10,7 @@ const COMP_DEF_OFFSET_ADD_LIQ: u32 = comp_def_offset("add_liquidity");
 const COMP_DEF_OFFSET_REMOVE_LIQ: u32 = comp_def_offset("remove_liquidity");
 const COMP_DEF_OFFSET_SWAP: u32 = comp_def_offset("swap");
 
-declare_id!("HaKYy38VhCD2xnh6A242oodE9bbJkXvVLip6bc58SiBx");
+declare_id!("EJM8wChedczKgKiJ2GHZvk17Fw1X2rkEr7uoNcUDFk3f");
 
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
@@ -18,16 +18,6 @@ fn integer_sqrt(n: u128) -> u64 {
     let mut y = (x + 1) / 2;
     while y < x { x = y; y = (x + n / x) / 2; }
     x as u64
-}
-
-fn compute_amount_out(reserve_in: u64, reserve_out: u64, amount_in: u64) -> u64 {
-    let ri = reserve_in as u128;
-    let ro = reserve_out as u128;
-    let ai = amount_in as u128;
-    let ai_fee = ai * 997u128;
-    let denom = ri * 1000u128 + ai_fee;
-    if denom == 0 { return 0; }
-    ((ro * ai_fee) / denom) as u64
 }
 
 #[arcium_program]
@@ -107,8 +97,6 @@ pub mod arcium_hello_world {
         pool.authority = ctx.accounts.authority.key();
         pool.reserve_pubkey = pubkey;
         pool.reserve_nonce = nonce.to_le_bytes();
-        pool.reserve_a_hint = initial_amount_a;
-        pool.reserve_b_hint = initial_amount_b;
 
         let product = (initial_amount_a as u128) * (initial_amount_b as u128);
         pool.lp_supply = integer_sqrt(product);
@@ -184,14 +172,14 @@ pub mod arcium_hello_world {
             &ctx.accounts.cluster_account,
             &ctx.accounts.computation_account,
         ) {
-            Ok(InitializePoolOutput { field_0 }) => field_0,
+            Ok(o) => o,
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
         let pool = &mut ctx.accounts.pool;
-        pool.encrypted_reserve_a = o.ciphertexts[0];
-        pool.encrypted_reserve_b = o.ciphertexts[1];
-        pool.reserve_nonce = o.nonce.to_le_bytes();
+        pool.encrypted_reserve_a = o.field_0.ciphertexts[0];
+        pool.encrypted_reserve_b = o.field_0.ciphertexts[1];
+        pool.reserve_nonce = o.field_0.nonce.to_le_bytes();
 
         let pool_key = pool.key();
         let bump_seed = [pool.pool_authority_bump];
@@ -233,26 +221,6 @@ pub mod arcium_hello_world {
     ) -> Result<()> {
         let pool = &mut ctx.accounts.pool;
 
-        let lp_minted = if pool.lp_supply > 0
-            && pool.reserve_a_hint > 0
-            && pool.reserve_b_hint > 0
-        {
-            let share_a = (amount_a as u128)
-                .checked_mul(pool.lp_supply as u128).unwrap()
-                .checked_div(pool.reserve_a_hint as u128).unwrap_or(0);
-            let share_b = (amount_b as u128)
-                .checked_mul(pool.lp_supply as u128).unwrap()
-                .checked_div(pool.reserve_b_hint as u128).unwrap_or(0);
-            std::cmp::min(share_a, share_b) as u64
-        } else {
-            integer_sqrt((amount_a as u128) * (amount_b as u128))
-        };
-
-        require!(lp_minted > 0, ErrorCode::InsufficientLiquidity);
-        pool.pending_lp_mint = lp_minted;
-        pool.pending_add_a = amount_a;
-        pool.pending_add_b = amount_b;
-
         token::transfer(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
@@ -289,6 +257,7 @@ pub mod arcium_hello_world {
             .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_a)
             .encrypted_u64(ciphertext_b)
+            .plaintext_u64(pool.lp_supply)
             .build();
 
         let pool_key_al = ctx.accounts.pool.key();
@@ -331,23 +300,17 @@ pub mod arcium_hello_world {
             &ctx.accounts.cluster_account,
             &ctx.accounts.computation_account,
         ) {
-            Ok(AddLiquidityOutput { field_0 }) => field_0,
+            Ok(o) => o,
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
         let pool = &mut ctx.accounts.pool;
-        pool.encrypted_reserve_a = o.ciphertexts[0];
-        pool.encrypted_reserve_b = o.ciphertexts[1];
-        pool.reserve_nonce = o.nonce.to_le_bytes();
+        pool.encrypted_reserve_a = o.field_0.field_0.ciphertexts[0];
+        pool.encrypted_reserve_b = o.field_0.field_0.ciphertexts[1];
+        pool.reserve_nonce = o.field_0.field_0.nonce.to_le_bytes();
 
-        pool.reserve_a_hint = pool.reserve_a_hint.saturating_add(pool.pending_add_a);
-        pool.reserve_b_hint = pool.reserve_b_hint.saturating_add(pool.pending_add_b);
-        pool.pending_add_a = 0;
-        pool.pending_add_b = 0;
-
-        let lp_minted = pool.pending_lp_mint;
+        let lp_minted = o.field_0.field_1;
         pool.lp_supply = pool.lp_supply.checked_add(lp_minted).unwrap();
-        pool.pending_lp_mint = 0;
 
         let pool_key = pool.key();
         let bump_seed = [pool.pool_authority_bump];
@@ -390,20 +353,8 @@ pub mod arcium_hello_world {
         require!(lp_amount <= pool.lp_supply, ErrorCode::InsufficientLPTokens);
         require!(pool.lp_supply > 0, ErrorCode::InsufficientLiquidity);
 
-        let amount_a_out = ((pool.reserve_a_hint as u128)
-            .checked_mul(lp_amount as u128).unwrap()
-            .checked_div(pool.lp_supply as u128).unwrap()) as u64;
-        let amount_b_out = ((pool.reserve_b_hint as u128)
-            .checked_mul(lp_amount as u128).unwrap()
-            .checked_div(pool.lp_supply as u128).unwrap()) as u64;
-
-        require!(amount_a_out > 0 && amount_b_out > 0, ErrorCode::InsufficientLiquidity);
-
-        pool.pending_withdraw_a = amount_a_out;
-        pool.pending_withdraw_b = amount_b_out;
+        let current_lp_supply = pool.lp_supply;
         pool.lp_supply = pool.lp_supply.checked_sub(lp_amount).unwrap();
-        pool.reserve_a_hint = pool.reserve_a_hint.saturating_sub(amount_a_out);
-        pool.reserve_b_hint = pool.reserve_b_hint.saturating_sub(amount_b_out);
 
         token::burn(
             CpiContext::new(
@@ -426,8 +377,8 @@ pub mod arcium_hello_world {
             .plaintext_u128(reserve_nonce)
             .encrypted_u64(pool.encrypted_reserve_a)
             .encrypted_u64(pool.encrypted_reserve_b)
-            .plaintext_u64(amount_a_out)
-            .plaintext_u64(amount_b_out)
+            .plaintext_u64(lp_amount)
+            .plaintext_u64(current_lp_supply)
             .build();
 
         let pool_key_rl = ctx.accounts.pool.key();
@@ -470,19 +421,17 @@ pub mod arcium_hello_world {
             &ctx.accounts.cluster_account,
             &ctx.accounts.computation_account,
         ) {
-            Ok(RemoveLiquidityOutput { field_0 }) => field_0,
+            Ok(o) => o,
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
         let pool = &mut ctx.accounts.pool;
-        pool.encrypted_reserve_a = o.ciphertexts[0];
-        pool.encrypted_reserve_b = o.ciphertexts[1];
-        pool.reserve_nonce = o.nonce.to_le_bytes();
+        pool.encrypted_reserve_a = o.field_0.field_0.ciphertexts[0];
+        pool.encrypted_reserve_b = o.field_0.field_0.ciphertexts[1];
+        pool.reserve_nonce = o.field_0.field_0.nonce.to_le_bytes();
 
-        let amount_a_out = pool.pending_withdraw_a;
-        let amount_b_out = pool.pending_withdraw_b;
-        pool.pending_withdraw_a = 0;
-        pool.pending_withdraw_b = 0;
+        let amount_a_out = o.field_0.field_1;
+        let amount_b_out = o.field_0.field_2;
 
         let pool_key = pool.key();
         let bump_seed = [pool.pool_authority_bump];
@@ -537,27 +486,8 @@ pub mod arcium_hello_world {
     ) -> Result<()> {
         let pool = &mut ctx.accounts.pool;
 
-        require!(pool.reserve_a_hint > 0 && pool.reserve_b_hint > 0, ErrorCode::PoolNotInitialized);
-
-        let amount_out = if a_to_b {
-            compute_amount_out(pool.reserve_a_hint, pool.reserve_b_hint, amount_in)
-        } else {
-            compute_amount_out(pool.reserve_b_hint, pool.reserve_a_hint, amount_in)
-        };
-
-        require!(amount_out > 0, ErrorCode::InsufficientLiquidity);
-
-        pool.pending_swap_amount_out = amount_out;
         pool.pending_swap_user = ctx.accounts.user.key();
         pool.pending_swap_a_to_b = a_to_b;
-
-        if a_to_b {
-            pool.reserve_a_hint = pool.reserve_a_hint.saturating_add(amount_in);
-            pool.reserve_b_hint = pool.reserve_b_hint.saturating_sub(amount_out);
-        } else {
-            pool.reserve_b_hint = pool.reserve_b_hint.saturating_add(amount_in);
-            pool.reserve_a_hint = pool.reserve_a_hint.saturating_sub(amount_out);
-        }
 
         if a_to_b {
             token::transfer(
@@ -598,7 +528,6 @@ pub mod arcium_hello_world {
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
             .encrypted_u64(ciphertext_in)
-            .plaintext_u64(amount_out)
             .plaintext_u8(a_to_b_u8)
             .build();
 
@@ -641,19 +570,18 @@ pub mod arcium_hello_world {
             &ctx.accounts.cluster_account,
             &ctx.accounts.computation_account,
         ) {
-            Ok(SwapOutput { field_0 }) => field_0,
+            Ok(o) => o,
             Err(_) => return Err(ErrorCode::AbortedComputation.into()),
         };
 
         let pool = &mut ctx.accounts.pool;
-        pool.encrypted_reserve_a = o.ciphertexts[0];
-        pool.encrypted_reserve_b = o.ciphertexts[1];
-        pool.reserve_nonce = o.nonce.to_le_bytes();
+        pool.encrypted_reserve_a = o.field_0.field_0.ciphertexts[0];
+        pool.encrypted_reserve_b = o.field_0.field_0.ciphertexts[1];
+        pool.reserve_nonce = o.field_0.field_0.nonce.to_le_bytes();
 
-        let amount_out = pool.pending_swap_amount_out;
+        let amount_out = o.field_0.field_1;
         let a_to_b = pool.pending_swap_a_to_b;
         let swap_user = pool.pending_swap_user;
-        pool.pending_swap_amount_out = 0;
 
         let pool_key = pool.key();
         let bump_seed = [pool.pool_authority_bump];
@@ -713,21 +641,13 @@ pub struct LiquidityPool {
     pub encrypted_reserve_b: [u8; 32],
     pub reserve_pubkey: [u8; 32],
     pub reserve_nonce: [u8; 16],
-    pub reserve_a_hint: u64,
-    pub reserve_b_hint: u64,
     pub lp_supply: u64,
-    pub pending_lp_mint: u64,
-    pub pending_withdraw_a: u64,
-    pub pending_withdraw_b: u64,
-    pub pending_swap_amount_out: u64,
     pub pending_swap_user: Pubkey,
     pub pending_swap_a_to_b: bool,
-    pub pending_add_a: u64,
-    pub pending_add_b: u64,
 }
 
 impl LiquidityPool {
-    pub const LEN: usize = 8 + 1 + 1 + 32 + 32 + 32 + 32 + 32 + 32 + 32 + 16 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 32 + 1 + 8 + 8;
+    pub const LEN: usize = 8 + 1 + 1 + 32 + 32 + 32 + 32 + 32 + 32 + 32 + 16 + 8 + 32 + 1;
 }
 
 #[queue_computation_accounts("initialize_pool", authority)]
@@ -1212,12 +1132,15 @@ pub enum ErrorCode {
     PoolNotInitialized,
 }
 
-////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////
+
+????????????????????????????????????????????????????????????????
+????????????????????????????????????????????????????????????????
+????????????????????????????????????????????????????????????????
+????????????????????????????????????????????????????????????????
+????????????????????????????????????????????????????????????????
+????????????????????????????????????????????????????????????????
+????????????????????????????????????????????????????????????????
+
 
 use arcis::*;
 
@@ -1239,20 +1162,26 @@ mod circuits {
         user_key: ArcisX25519Pubkey,
         user_nonce: u128,
         amounts: EncData<(u64, u64)>,
-    ) -> Enc<Shared, (u64, u64)> {
+        lp_supply: u64,
+    ) -> (Enc<Shared, (u64, u64)>, u64) {
         let (ra, rb) = reserves.to_arcis();
         let (aa, ab) = amounts.to_arcis_with_pubkey_and_nonce(user_key, user_nonce);
-        reserves.owner.from_arcis((ra + aa, rb + ab))
+        let share_a = (aa * lp_supply) / ra;
+        let share_b = (ab * lp_supply) / rb;
+        let lp_minted = if share_a < share_b { share_a } else { share_b };
+        (reserves.owner.from_arcis((ra + aa, rb + ab)), lp_minted.reveal())
     }
 
     #[instruction]
     pub fn remove_liquidity(
         reserves: Enc<Shared, (u64, u64)>,
-        amount_a_out: u64,
-        amount_b_out: u64,
-    ) -> Enc<Shared, (u64, u64)> {
+        lp_amount: u64,
+        lp_supply: u64,
+    ) -> (Enc<Shared, (u64, u64)>, u64, u64) {
         let (ra, rb) = reserves.to_arcis();
-        reserves.owner.from_arcis((ra - amount_a_out, rb - amount_b_out))
+        let amount_a_out = (ra * lp_amount) / lp_supply;
+        let amount_b_out = (rb * lp_amount) / lp_supply;
+        (reserves.owner.from_arcis((ra - amount_a_out, rb - amount_b_out)), amount_a_out.reveal(), amount_b_out.reveal())
     }
 
     #[instruction]
@@ -1261,21 +1190,16 @@ mod circuits {
         user_key: ArcisX25519Pubkey,
         user_nonce: u128,
         amount_in: EncData<u64>,
-        amount_out: u64,
         a_to_b: u8,
-    ) -> Enc<Shared, (u64, u64)> {
+    ) -> (Enc<Shared, (u64, u64)>, u64) {
         let (ra, rb) = reserves.to_arcis();
         let ai = amount_in.to_arcis_with_pubkey_and_nonce(user_key, user_nonce);
-
-        let new_ra_ab = ra + ai;
-        let new_rb_ab = rb - amount_out;
-
-        let new_ra_ba = ra - amount_out;
-        let new_rb_ba = rb + ai;
-
-        let final_ra = if a_to_b != 0 { new_ra_ab } else { new_ra_ba };
-        let final_rb = if a_to_b != 0 { new_rb_ab } else { new_rb_ba };
-
-        reserves.owner.from_arcis((final_ra, final_rb))
+        let (ri, ro) = if a_to_b != 0 { (ra, rb) } else { (rb, ra) };
+        let ai_fee = ai * 997u64;
+        let denom = ri * 1000u64 + ai_fee;
+        let amount_out = (ro * ai_fee) / denom;
+        let final_ra = if a_to_b != 0 { ra + ai } else { ra - amount_out };
+        let final_rb = if a_to_b != 0 { rb - amount_out } else { rb + ai };
+        (reserves.owner.from_arcis((final_ra, final_rb)), amount_out.reveal())
     }
 }
