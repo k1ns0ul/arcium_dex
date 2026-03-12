@@ -1,519 +1,1281 @@
-arcium deploy --cluster-offset 456 --recovery-set-size 4 --keypair-path ~/.config/solana/id.json --rpc-url "https://devnet.helius-rpc.com/?api-key=e229b931-070b-490c-b33b-c2f1d23747e8"
-
-arcium test --cluster devnet
-
-
-
-# CLAUDE.md
-
-Этот файл содержит руководство для Claude Code (claude.ai/code) при работе с кодом в этом репозитории.
-
-## Обзор проекта
-
-Это Arcium Hello World проект - демонстрация зашифрованных вычислений на Solana с использованием Multi-Party Computation (MPC). Проект позволяет выполнять конфиденциальные операции (сложение двух чисел) без расшифровки данных.
-
-## Архитектура
-
-### Структура проекта
-
-```
-arcium_hello_world/
-├── programs/arcium_hello_world/    # Solana программа
-│   └── src/
-│       ├── lib.rs                  # Основной файл программы, declare_id!
-│       ├── instructions/           # Инструкции программы
-│       └── state/                  # Структуры состояния
-├── encrypted-ixs/                  # Конфиденциальные инструкции Arcis
-│   └── add_together.rs             # Логика зашифрованного сложения
-├── tests/                          # TypeScript тесты
-│   └── arcium_hello_world.ts       # Основной тест-файл
-├── build/                          # Скомпилированные circuit файлы (.arcis)
-├── target/deploy/                  # Скомпилированные .so файлы программы
-├── Anchor.toml                     # Конфигурация Anchor
-└── Cargo.toml                      # Зависимости Rust
-```
-
-### Ключевые компоненты
-
-**Solana программа** (`programs/arcium_hello_world/src/lib.rs`):
-- Определяет публичный интерфейс для взаимодействия с MPC кластером
-- Инициализирует computation definitions
-- Обрабатывает события результатов вычислений
-
-**Конфиденциальные инструкции** (`encrypted-ixs/add_together.rs`):
-- Написаны на Arcis (расширение Rust для MPC)
-- Компилируются в `.arcis` файлы
-- Выполняются на MPC кластере без расшифровки данных
-
-**MXE (Multi-party eXecution Environment)**:
-- PDA account, создаваемый Arcium программой
-- Хранит x25519 публичный ключ для шифрования
-- Управляет взаимодействием с MPC кластером
-
-**Тесты** (`tests/arcium_hello_world.ts`):
-- Инициализация computation definitions
-- Загрузка circuits на devnet
-- Шифрование данных с использованием x25519 + RescueCipher
-- Постановка вычислений в очередь
-- Ожидание финализации от MPC кластера
-- Расшифровка результатов
-
-## Основные концепции
-
-### Жизненный цикл вычисления
-
-1. **Инициализация Computation Definition**:
-   - Создаётся PDA account для определения вычисления
-   - Загружается скомпилированный circuit (.arcis файл)
-   - Computation definition финализируется
-
-2. **Постановка вычисления в очередь**:
-   - Клиент шифрует входные данные (val1, val2)
-   - Вызывает инструкцию программы (например, `addTogether`)
-   - Создаётся computation account с зашифрованными данными
-
-3. **Обработка MPC кластером**:
-   - MPC ноды забирают вычисление из mempool
-   - Выполняют конфиденциальную инструкцию на зашифрованных данных
-   - Вызывают callback в программу с зашифрованным результатом
-
-4. **Финализация**:
-   - Программа эмитирует событие с результатом
-   - Клиент расшифровывает результат своим приватным ключом
-
-### Шифрование данных
-
-**Используемая криптография**:
-- **x25519**: Обмен ключами (Diffie-Hellman)
-- **RescueCipher**: Симметричное шифрование для MPC-friendly операций
-
-**Процесс шифрования**:
-```typescript
-// 1. Генерация ключевой пары клиента
-const privateKey = x25519.utils.randomSecretKey();
-const publicKey = x25519.getPublicKey(privateKey);
-
-// 2. Получение публичного ключа MXE
-const mxePublicKey = await getMXEPublicKey(provider, programId);
-
-// 3. Создание общего секрета
-const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
-
-// 4. Шифрование данных
-const cipher = new RescueCipher(sharedSecret);
-const nonce = randomBytes(16);
-const ciphertext = cipher.encrypt([val1, val2], nonce);
-
-// 5. Расшифровка результата
-const decrypted = cipher.decrypt([result], nonce)[0];
-```
-
-### Конфигурация кластеров
-
-**Devnet кластеры**:
-- **Offset 123**: v0.5.4 (старая версия)
-- **Offset 456**: v0.6.3 (рекомендуется)
-
-**Требования к версиям**:
-- `@arcium-hq/client@0.6.3` (TypeScript)
-- `arcium-client = "0.6.3"` (Rust)
-- `arcium-macros = "0.6.3"` (Rust)
-- `arcium-anchor = "0.6.3"` (Rust)
-
-## Окружение разработки
-
-### Переменные окружения
-
-Не требуются для базовой разработки. Для devnet тестирования:
-- **RPC endpoint**: Используйте Helius или QuickNode (default Solana RPC ненадёжен)
-- **Keypair**: `~/.config/solana/id.json`
-
-### Конфигурация в коде
-
-**Для localnet** (`tests/arcium_hello_world.ts`):
-```typescript
-const USE_DEVNET = false;
-// Использует getArciumEnv() для получения кластера
-```
-
-**Для devnet**:
-```typescript
-const USE_DEVNET = true;
-const DEVNET_CLUSTER_OFFSET = 456;
-const connection = new anchor.web3.Connection(
-  "https://devnet.helius-rpc.com/?api-key=YOUR_KEY",
-  "confirmed"
-);
-```
-
-## Ключевые команды
-
-### Разработка
-
-```bash
-# Сборка проекта (компиляция Solana программы и circuits)
-arcium build
-
-# Очистка артефактов
-arcium clean
-
-# Запуск тестов на localnet
-arcium test
-
-# Запуск тестов на devnet
-arcium test --cluster devnet
-```
-
-### Деплой на devnet
-
-```bash
-# Полный деплой с инициализацией MXE
-arcium deploy \
-  --cluster-offset 456 \
-  --keypair-path ~/.config/solana/id.json \
-  --recovery-set-size 4 \
-  --rpc-url "https://devnet.helius-rpc.com/?api-key=YOUR_KEY"
-
-# Деплой только программы (без MXE)
-arcium deploy ... --skip-init
-
-# Только инициализация MXE (программа уже задеплоена)
-arcium deploy ... --skip-deploy
-```
-
-### Solana CLI
-
-```bash
-# Проверка баланса
-solana balance --url devnet
-
-# Получение airdrop
-solana airdrop 2 --url devnet
-
-# Проверка информации о программе
-solana program show <PROGRAM_ID> --url devnet
-
-# Проверка account
-solana account <ACCOUNT_ADDRESS> --url devnet
-
-# Закрытие программы (возврат средств)
-solana program close <PROGRAM_ID> --url devnet --bypass-warning
-```
-
-### Работа с keypairs
-
-```bash
-# Генерация нового keypair
-solana-keygen new --outfile ~/.config/solana/devnet.json
-
-# Просмотр публичного ключа
-solana-keygen pubkey ~/.config/solana/id.json
-
-# Просмотр program keypair
-solana-keygen pubkey target/deploy/arcium_hello_world-keypair.json
-
-# Установка активного keypair
-solana config set --keypair ~/.config/solana/id.json
-```
-
-## Детали реализации
-
-### Добавление нового конфиденциального вычисления
-
-1. **Создайте Arcis файл** (`encrypted-ixs/new_computation.rs`):
-```rust
-use arcium_macros::circuit;
-
-#[circuit]
-pub fn new_computation(input1: u64, input2: u64) -> u64 {
-    input1 * input2  // Ваша логика
-}
-```
-
-2. **Добавьте инструкцию в программу** (`programs/.../lib.rs`):
-```rust
-pub fn new_computation(
-    ctx: Context<NewComputation>,
-    computation_offset: u64,
-    encrypted_input1: [u8; 32],
-    encrypted_input2: [u8; 32],
-    x25519_pubkey: [u8; 32],
-    nonce: u128,
-) -> Result<()> {
-    queue_computation(/* ... */)?;
-    Ok(())
-}
-
-pub fn new_computation_callback(
-    ctx: Context<NewComputationCallback>,
-    encrypted_result: [u8; 32],
-) -> Result<()> {
-    emit!(ResultEvent {
-        result: encrypted_result,
-        nonce: /* ... */,
-    });
-    Ok(())
-}
-```
-
-3. **Добавьте computation definition**:
-```rust
-pub fn init_new_computation_comp_def(
-    ctx: Context<InitNewComputationCompDef>
-) -> Result<()> {
-    init_comp_def(ctx.accounts, None, None)?;
-    Ok(())
-}
-```
-
-4. **Обновите тесты**:
-```typescript
-await initNewComputationCompDef(program, owner, true, false);
-const result = await program.methods.newComputation(/* ... */).rpc();
-```
-
-### Изменение program ID
-
-Когда создаёте новый program keypair или задеплоили на новый адрес:
-
-1. **Узнайте новый program ID**:
-```bash
-solana-keygen pubkey target/deploy/arcium_hello_world-keypair.json
-```
-
-2. **Обновите `lib.rs`**:
-```rust
-declare_id!("НОВЫЙ_PROGRAM_ID");
-```
-
-3. **Обновите `Anchor.toml`**:
-```toml
-[programs.devnet]
-arcium_hello_world = "НОВЫЙ_PROGRAM_ID"
-```
-
-4. **Пересоберите**:
-```bash
-arcium build
-```
-
-### Работа с circuit storage
-
-**Onchain storage** (для маленьких circuits):
-```rust
-pub fn init_comp_def(ctx: Context<InitCompDef>) -> Result<()> {
-    init_comp_def(ctx.accounts, None, None)?;
-    Ok(())
-}
-```
-
-Затем в тестах:
-```typescript
-const rawCircuit = fs.readFileSync("build/circuit.arcis");
-await uploadCircuit(provider, "circuit_name", programId, rawCircuit, true);
-```
-
-**Offchain storage** (рекомендуется):
-```rust
-use arcium_client::idl::arcium::types::{CircuitSource, OffChainCircuitSource};
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, MintTo, Transfer, Burn};
+use arcium_anchor::prelude::*;
+use arcium_anchor::LUT_PROGRAM_ID;
+use arcium_client::idl::arcium::types::{CircuitSource, OffChainCircuitSource, CallbackAccount};
 use arcium_macros::circuit_hash;
 
-pub fn init_comp_def(ctx: Context<InitCompDef>) -> Result<()> {
-    init_comp_def(
-        ctx.accounts,
-        Some(CircuitSource::OffChain(OffChainCircuitSource {
-            source: "https://storage.com/circuit.arcis".to_string(),
-            hash: circuit_hash!("circuit_name"),
-        })),
-        None,
-    )?;
-    Ok(())
+const COMP_DEF_OFFSET_INIT_POOL: u32 = comp_def_offset("initialize_pool");
+const COMP_DEF_OFFSET_ADD_LIQ: u32 = comp_def_offset("add_liquidity");
+const COMP_DEF_OFFSET_REMOVE_LIQ: u32 = comp_def_offset("remove_liquidity");
+const COMP_DEF_OFFSET_SWAP: u32 = comp_def_offset("swap");
+
+declare_id!("HaKYy38VhCD2xnh6A242oodE9bbJkXvVLip6bc58SiBx");
+
+fn integer_sqrt(n: u128) -> u64 {
+    if n == 0 { return 0; }
+    let mut x = n;
+    let mut y = (x + 1) / 2;
+    while y < x { x = y; y = (x + n / x) / 2; }
+    x as u64
 }
-```
 
-### Обработка ошибок в тестах
+fn compute_amount_out(reserve_in: u64, reserve_out: u64, amount_in: u64) -> u64 {
+    let ri = reserve_in as u128;
+    let ro = reserve_out as u128;
+    let ai = amount_in as u128;
+    let ai_fee = ai * 997u128;
+    let denom = ri * 1000u128 + ai_fee;
+    if denom == 0 { return 0; }
+    ((ro * ai_fee) / denom) as u64
+}
 
-**Типичные проблемы и решения**:
+#[arcium_program]
+pub mod arcium_hello_world {
+    use super::*;
 
-1. **`AccountNotInitialized` (MXE)**:
-   - MXE не инициализирован
-   - Решение: Задеплойте без `--skip-init`
+    pub fn init_initialize_pool_comp_def(ctx: Context<InitInitializePoolCompDef>) -> Result<()> {
+        init_comp_def(
+            ctx.accounts,
+            Some(CircuitSource::OffChain(OffChainCircuitSource {
+                source: "https://raw.githubusercontent.com/k1ns0ul/arcium_dex/pool_initializing/build/initialize_pool.arcis".to_string(),
+                hash: circuit_hash!("initialize_pool"),
+            })),
+            None,
+        )?;
+        Ok(())
+    }
 
-2. **`InvalidAuthority`**:
-   - Используете неправильный keypair
-   - Решение: Используйте тот же keypair, что и при деплое
+    pub fn init_add_liquidity_comp_def(ctx: Context<InitAddLiquidityCompDef>) -> Result<()> {
+        init_comp_def(
+            ctx.accounts,
+            Some(CircuitSource::OffChain(OffChainCircuitSource {
+                source: "https://raw.githubusercontent.com/k1ns0ul/arcium_dex/pool_initializing/build/add_liquidity.arcis".to_string(),
+                hash: circuit_hash!("add_liquidity"),
+            })),
+            None,
+        )?;
+        Ok(())
+    }
 
-3. **`Insufficient lamports`**:
-   - Не хватает SOL для транзакции
-   - Решение: Получите airdrop или используйте web faucet
+    pub fn init_remove_liquidity_comp_def(ctx: Context<InitRemoveLiquidityCompDef>) -> Result<()> {
+        init_comp_def(
+            ctx.accounts,
+            Some(CircuitSource::OffChain(OffChainCircuitSource {
+                source: "https://raw.githubusercontent.com/k1ns0ul/arcium_dex/pool_initializing/build/remove_liquidity.arcis".to_string(),
+                hash: circuit_hash!("remove_liquidity"),
+            })),
+            None,
+        )?;
+        Ok(())
+    }
 
-4. **`Failed to fetch MXE public key`**:
-   - MXE account не существует
-   - Решение: Проверьте что MXE был создан при деплое
+    pub fn init_swap_comp_def(ctx: Context<InitSwapCompDef>) -> Result<()> {
+        init_comp_def(
+            ctx.accounts,
+            Some(CircuitSource::OffChain(OffChainCircuitSource {
+                source: "https://raw.githubusercontent.com/k1ns0ul/arcium_dex/pool_initializing/build/swap.arcis".to_string(),
+                hash: circuit_hash!("swap"),
+            })),
+            None,
+        )?;
+        Ok(())
+    }
 
-5. **Timeout при ожидании финализации**:
-   - MPC кластер не обрабатывает вычисления
-   - Решение: Используйте localnet для разработки
+    pub fn initialize_liquidity_pool(
+        ctx: Context<InitializeLiquidityPool>,
+        computation_offset: u64,
+        initial_amount_a: u64,
+        initial_amount_b: u64,
+        ciphertext_a: [u8; 32],
+        ciphertext_b: [u8; 32],
+        pubkey: [u8; 32],
+        nonce: u128,
+    ) -> Result<()> {
+        let pool_key = ctx.accounts.pool.key();
+        let (_, pool_authority_bump) = Pubkey::find_program_address(
+            &[b"pool_authority", pool_key.as_ref()],
+            ctx.program_id,
+        );
 
-### Получение MXE account address
+        let pool = &mut ctx.accounts.pool;
+        pool.bump = ctx.bumps.pool;
+        pool.pool_authority_bump = pool_authority_bump;
+        pool.token_a_mint = ctx.accounts.token_a_mint.key();
+        pool.token_b_mint = ctx.accounts.token_b_mint.key();
+        pool.lp_mint = ctx.accounts.lp_mint.key();
+        pool.authority = ctx.accounts.authority.key();
+        pool.reserve_pubkey = pubkey;
+        pool.reserve_nonce = nonce.to_le_bytes();
+        pool.reserve_a_hint = initial_amount_a;
+        pool.reserve_b_hint = initial_amount_b;
 
-```bash
-# Вычислите правильный MXE PDA
-node -e "
-const { getMXEAccAddress } = require('@arcium-hq/client');
-const { PublicKey } = require('@solana/web3.js');
-const programId = new PublicKey('YOUR_PROGRAM_ID');
-const mxeAccount = getMXEAccAddress(programId);
-console.log(mxeAccount.toString());
-"
+        let product = (initial_amount_a as u128) * (initial_amount_b as u128);
+        pool.lp_supply = integer_sqrt(product);
 
-# Проверьте account
-solana account <MXE_ADDRESS> --url devnet
-```
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.user_token_a.to_account_info(),
+                    to: ctx.accounts.pool_token_a.to_account_info(),
+                    authority: ctx.accounts.authority.to_account_info(),
+                },
+            ),
+            initial_amount_a,
+        )?;
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.user_token_b.to_account_info(),
+                    to: ctx.accounts.pool_token_b.to_account_info(),
+                    authority: ctx.accounts.authority.to_account_info(),
+                },
+            ),
+            initial_amount_b,
+        )?;
 
-## Важные замечания
+        ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
 
-### Разработка vs Production
+        let args = ArgBuilder::new()
+            .x25519_pubkey(pubkey)
+            .plaintext_u128(nonce)
+            .encrypted_u64(ciphertext_a)
+            .encrypted_u64(ciphertext_b)
+            .build();
 
-**Для разработки используйте localnet**:
-- ✅ Мгновенные транзакции
-- ✅ Неограниченный SOL
-- ✅ Полный контроль
-- ✅ Не зависит от сети
+        let lp_mint_key = ctx.accounts.lp_mint.key();
+        let user_lp_token_key = ctx.accounts.user_lp_token.key();
+        let pool_authority_key = Pubkey::create_program_address(
+            &[b"pool_authority", pool_key.as_ref(), &[pool_authority_bump]],
+            ctx.program_id,
+        ).unwrap();
+        let token_program_key = ctx.accounts.token_program.key();
 
-```bash
-# Терминал 1: Запустите validator
-solana-test-validator
+        queue_computation(
+            ctx.accounts,
+            computation_offset,
+            args,
+            vec![InitializePoolCallback::callback_ix(
+                computation_offset,
+                &ctx.accounts.mxe_account,
+                &[
+                    CallbackAccount { pubkey: pool_key,           is_writable: true  },
+                    CallbackAccount { pubkey: lp_mint_key,        is_writable: true  },
+                    CallbackAccount { pubkey: user_lp_token_key,  is_writable: true  },
+                    CallbackAccount { pubkey: pool_authority_key, is_writable: false },
+                    CallbackAccount { pubkey: token_program_key,  is_writable: false },
+                ],
+            )?],
+            1,
+            0,
+        )?;
 
-# Терминал 2: Запустите тесты
-arcium test
-```
+        Ok(())
+    }
 
-**Devnet используйте только для финального тестирования**:
-- ⚠️ Требуется airdrop SOL
-- ⚠️ Медленные транзакции
-- ⚠️ MPC кластер может быть перегружен
-- ⚠️ Зависит от сетевой стабильности
+    #[arcium_callback(encrypted_ix = "initialize_pool")]
+    pub fn initialize_pool_callback(
+        ctx: Context<InitializePoolCallback>,
+        output: SignedComputationOutputs<InitializePoolOutput>,
+    ) -> Result<()> {
+        let o = match output.verify_output(
+            &ctx.accounts.cluster_account,
+            &ctx.accounts.computation_account,
+        ) {
+            Ok(InitializePoolOutput { field_0 }) => field_0,
+            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+        };
 
-### Безопасность
+        let pool = &mut ctx.accounts.pool;
+        pool.encrypted_reserve_a = o.ciphertexts[0];
+        pool.encrypted_reserve_b = o.ciphertexts[1];
+        pool.reserve_nonce = o.nonce.to_le_bytes();
 
-- **Никогда не коммитьте**:
-  - Private keys (`.json` keypairs)
-  - Seed phrases
-  - API ключи в `.env`
-  
-- **Храните в `.gitignore`**:
-  - `*.json` (keypairs)
-  - `.env`
-  - `target/`
-  - `receipts/`
+        let pool_key = pool.key();
+        let bump_seed = [pool.pool_authority_bump];
+        let seeds: &[&[u8]] = &[b"pool_authority", pool_key.as_ref(), &bump_seed];
+        let signer = &[seeds];
 
-### Производительность
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.lp_mint.to_account_info(),
+                    to: ctx.accounts.user_lp_token.to_account_info(),
+                    authority: ctx.accounts.pool_authority.to_account_info(),
+                },
+                signer,
+            ),
+            pool.lp_supply,
+        )?;
 
-- **Circuit размер**: Большие circuits увеличивают стоимость деплоя
-- **Mempool size**: Настраивается при деплое (`--mempool-size Large`)
-- **Recovery set size**: Для devnet используйте 4
-- **RPC endpoint**: Используйте платные RPC для стабильности
+        emit!(PoolInitializedEvent {
+            pool: pool_key,
+            encrypted_reserve_a: pool.encrypted_reserve_a,
+            encrypted_reserve_b: pool.encrypted_reserve_b,
+            lp_supply: pool.lp_supply,
+        });
 
-### Отладка
+        Ok(())
+    }
 
-**Логирование в Rust программе**:
-```rust
-msg!("Debug info: {:?}", value);
-```
+    pub fn add_liquidity_to_pool(
+        ctx: Context<AddLiquidityToPool>,
+        computation_offset: u64,
+        amount_a: u64,
+        amount_b: u64,
+        ciphertext_a: [u8; 32],
+        ciphertext_b: [u8; 32],
+        pubkey: [u8; 32],
+        nonce: u128,
+    ) -> Result<()> {
+        let pool = &mut ctx.accounts.pool;
 
-**Логирование в тестах**:
-```typescript
-console.log("Step:", step);
-console.log("Transaction signature:", signature);
-```
+        let lp_minted = if pool.lp_supply > 0
+            && pool.reserve_a_hint > 0
+            && pool.reserve_b_hint > 0
+        {
+            let share_a = (amount_a as u128)
+                .checked_mul(pool.lp_supply as u128).unwrap()
+                .checked_div(pool.reserve_a_hint as u128).unwrap_or(0);
+            let share_b = (amount_b as u128)
+                .checked_mul(pool.lp_supply as u128).unwrap()
+                .checked_div(pool.reserve_b_hint as u128).unwrap_or(0);
+            std::cmp::min(share_a, share_b) as u64
+        } else {
+            integer_sqrt((amount_a as u128) * (amount_b as u128))
+        };
 
-**Проверка транзакций в explorer**:
-```
-https://explorer.solana.com/tx/<SIGNATURE>?cluster=devnet
-```
+        require!(lp_minted > 0, ErrorCode::InsufficientLiquidity);
+        pool.pending_lp_mint = lp_minted;
+        pool.pending_add_a = amount_a;
+        pool.pending_add_b = amount_b;
 
-## Полезные ссылки
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.user_token_a.to_account_info(),
+                    to: ctx.accounts.pool_token_a.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            amount_a,
+        )?;
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.user_token_b.to_account_info(),
+                    to: ctx.accounts.pool_token_b.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            amount_b,
+        )?;
 
-- **Документация Arcium**: https://docs.arcium.com/
-- **TypeScript SDK**: https://ts.arcium.com/api
-- **Discord**: https://discord.com/invite/arcium
-- **Solana Explorer**: https://explorer.solana.com/
-- **Devnet Faucets**:
-  - https://faucet.solana.com/
-  - https://faucet.quicknode.com/solana/devnet
-  - https://solfaucet.com/
+        ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
 
-## Troubleshooting
+        let reserve_nonce = u128::from_le_bytes(pool.reserve_nonce);
 
-### Проблема: Тест зависает на ожидании финализации
+        let args = ArgBuilder::new()
+            .x25519_pubkey(pool.reserve_pubkey)
+            .plaintext_u128(reserve_nonce)
+            .encrypted_u64(pool.encrypted_reserve_a)
+            .encrypted_u64(pool.encrypted_reserve_b)
+            .x25519_pubkey(pubkey)
+            .plaintext_u128(nonce)
+            .encrypted_u64(ciphertext_a)
+            .encrypted_u64(ciphertext_b)
+            .build();
 
-**Причины**:
-- MPC кластер не активен
-- Неправильный cluster offset
-- Проблемы с сетью
+        let pool_key_al = ctx.accounts.pool.key();
+        let pool_auth_al = Pubkey::create_program_address(
+            &[b"pool_authority", pool_key_al.as_ref(), &[ctx.accounts.pool.pool_authority_bump]],
+            ctx.program_id,
+        ).unwrap();
 
-**Решение**:
-1. Используйте localnet для разработки
-2. Проверьте статус кластера в Discord
-3. Убедитесь что используете cluster offset 456
-4. Добавьте таймаут в тесты (5 минут)
+        queue_computation(
+            ctx.accounts,
+            computation_offset,
+            args,
+            vec![AddLiquidityCallback::callback_ix(
+                computation_offset,
+                &ctx.accounts.mxe_account,
+                &[
+                    CallbackAccount { pubkey: pool_key_al,                           is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.user.key(),               is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.pool.lp_mint,             is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.user_lp_token.key(),      is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.pool_token_a.key(),       is_writable: false },
+                    CallbackAccount { pubkey: ctx.accounts.pool_token_b.key(),       is_writable: false },
+                    CallbackAccount { pubkey: pool_auth_al,                          is_writable: false },
+                    CallbackAccount { pubkey: ctx.accounts.token_program.key(),      is_writable: false },
+                ],
+            )?],
+            1,
+            0,
+        )?;
 
-### Проблема: Circuit не загружается
+        Ok(())
+    }
 
-**Причины**:
-- Недостаточно SOL
-- Circuit account уже существует
-- Неправильный путь к файлу
+    #[arcium_callback(encrypted_ix = "add_liquidity")]
+    pub fn add_liquidity_callback(
+        ctx: Context<AddLiquidityCallback>,
+        output: SignedComputationOutputs<AddLiquidityOutput>,
+    ) -> Result<()> {
+        let o = match output.verify_output(
+            &ctx.accounts.cluster_account,
+            &ctx.accounts.computation_account,
+        ) {
+            Ok(AddLiquidityOutput { field_0 }) => field_0,
+            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+        };
 
-**Решение**:
-1. Проверьте баланс: `solana balance --url devnet`
-2. Используйте try-catch для обработки "already in use"
-3. Убедитесь что путь правильный: `build/circuit_name.arcis`
+        let pool = &mut ctx.accounts.pool;
+        pool.encrypted_reserve_a = o.ciphertexts[0];
+        pool.encrypted_reserve_b = o.ciphertexts[1];
+        pool.reserve_nonce = o.nonce.to_le_bytes();
 
-### Проблема: Program deployment failed
+        pool.reserve_a_hint = pool.reserve_a_hint.saturating_add(pool.pending_add_a);
+        pool.reserve_b_hint = pool.reserve_b_hint.saturating_add(pool.pending_add_b);
+        pool.pending_add_a = 0;
+        pool.pending_add_b = 0;
 
-**Причины**:
-- Недостаточно SOL
-- Неправильный RPC endpoint
-- Program уже существует
+        let lp_minted = pool.pending_lp_mint;
+        pool.lp_supply = pool.lp_supply.checked_add(lp_minted).unwrap();
+        pool.pending_lp_mint = 0;
 
-**Решение**:
-1. Получите больше SOL через faucet
-2. Используйте Helius/QuickNode RPC
-3. Закройте старую программу: `solana program close <ID>`
+        let pool_key = pool.key();
+        let bump_seed = [pool.pool_authority_bump];
+        let seeds: &[&[u8]] = &[b"pool_authority", pool_key.as_ref(), &bump_seed];
+        let signer = &[seeds];
 
-## Шаблоны кода
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.lp_mint.to_account_info(),
+                    to: ctx.accounts.user_lp_token.to_account_info(),
+                    authority: ctx.accounts.pool_authority.to_account_info(),
+                },
+                signer,
+            ),
+            lp_minted,
+        )?;
 
-### Базовая структура теста
+        emit!(LiquidityAddedEvent {
+            pool: pool_key,
+            user: ctx.accounts.user.key(),
+            encrypted_reserve_a: pool.encrypted_reserve_a,
+            encrypted_reserve_b: pool.encrypted_reserve_b,
+            lp_minted,
+        });
 
-```typescript
-it("Should perform encrypted computation", async () => {
-  // 1. Инициализация computation definition
-  await initCompDef(program, owner, true, false);
-  
-  // 2. Получение MXE public key
-  const mxePublicKey = await getMXEPublicKey(provider, programId);
-  
-  // 3. Подготовка шифрования
-  const privateKey = x25519.utils.randomSecretKey();
-  const publicKey = x25519.getPublicKey(privateKey);
-  const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
-  const cipher = new RescueCipher(sharedSecret);
-  
-  // 4. Шифрование данных
-  const nonce = randomBytes(16);
-  const ciphertext = cipher.encrypt([val1, val2], nonce);
-  
-  // 5. Постановка вычисления в очередь
-  const computationOffset = new anchor.BN(randomBytes(8), "hex");
-  await program.methods.compute(/* encrypted params */).rpc();
-  
-  // 6. Ожидание финализации
-  await awaitComputationFinalization(provider, computationOffset, programId);
-  
-  // 7. Расшифровка результата
-  const result = cipher.decrypt([encryptedResult], nonce)[0];
-  expect(result).to.equal(expectedValue);
-});
-```
+        Ok(())
+    }
+
+    pub fn remove_liquidity_from_pool(
+        ctx: Context<RemoveLiquidityFromPool>,
+        computation_offset: u64,
+        lp_amount: u64,
+        pubkey: [u8; 32],
+        nonce: u128,
+    ) -> Result<()> {
+        let pool = &mut ctx.accounts.pool;
+
+        require!(lp_amount <= pool.lp_supply, ErrorCode::InsufficientLPTokens);
+        require!(pool.lp_supply > 0, ErrorCode::InsufficientLiquidity);
+
+        let amount_a_out = ((pool.reserve_a_hint as u128)
+            .checked_mul(lp_amount as u128).unwrap()
+            .checked_div(pool.lp_supply as u128).unwrap()) as u64;
+        let amount_b_out = ((pool.reserve_b_hint as u128)
+            .checked_mul(lp_amount as u128).unwrap()
+            .checked_div(pool.lp_supply as u128).unwrap()) as u64;
+
+        require!(amount_a_out > 0 && amount_b_out > 0, ErrorCode::InsufficientLiquidity);
+
+        pool.pending_withdraw_a = amount_a_out;
+        pool.pending_withdraw_b = amount_b_out;
+        pool.lp_supply = pool.lp_supply.checked_sub(lp_amount).unwrap();
+        pool.reserve_a_hint = pool.reserve_a_hint.saturating_sub(amount_a_out);
+        pool.reserve_b_hint = pool.reserve_b_hint.saturating_sub(amount_b_out);
+
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Burn {
+                    mint: ctx.accounts.lp_mint.to_account_info(),
+                    from: ctx.accounts.user_lp_token.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            lp_amount,
+        )?;
+
+        ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
+
+        let reserve_nonce = u128::from_le_bytes(pool.reserve_nonce);
+
+        let args = ArgBuilder::new()
+            .x25519_pubkey(pool.reserve_pubkey)
+            .plaintext_u128(reserve_nonce)
+            .encrypted_u64(pool.encrypted_reserve_a)
+            .encrypted_u64(pool.encrypted_reserve_b)
+            .plaintext_u64(amount_a_out)
+            .plaintext_u64(amount_b_out)
+            .build();
+
+        let pool_key_rl = ctx.accounts.pool.key();
+        let pool_auth_rl = Pubkey::create_program_address(
+            &[b"pool_authority", pool_key_rl.as_ref(), &[ctx.accounts.pool.pool_authority_bump]],
+            ctx.program_id,
+        ).unwrap();
+
+        queue_computation(
+            ctx.accounts,
+            computation_offset,
+            args,
+            vec![RemoveLiquidityCallback::callback_ix(
+                computation_offset,
+                &ctx.accounts.mxe_account,
+                &[
+                    CallbackAccount { pubkey: pool_key_rl,                           is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.user.key(),               is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.user_token_a.key(),       is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.user_token_b.key(),       is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.pool_token_a.key(),       is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.pool_token_b.key(),       is_writable: true  },
+                    CallbackAccount { pubkey: pool_auth_rl,                          is_writable: false },
+                    CallbackAccount { pubkey: ctx.accounts.token_program.key(),      is_writable: false },
+                ],
+            )?],
+            1,
+            0,
+        )?;
+
+        Ok(())
+    }
+
+    #[arcium_callback(encrypted_ix = "remove_liquidity")]
+    pub fn remove_liquidity_callback(
+        ctx: Context<RemoveLiquidityCallback>,
+        output: SignedComputationOutputs<RemoveLiquidityOutput>,
+    ) -> Result<()> {
+        let o = match output.verify_output(
+            &ctx.accounts.cluster_account,
+            &ctx.accounts.computation_account,
+        ) {
+            Ok(RemoveLiquidityOutput { field_0 }) => field_0,
+            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+        };
+
+        let pool = &mut ctx.accounts.pool;
+        pool.encrypted_reserve_a = o.ciphertexts[0];
+        pool.encrypted_reserve_b = o.ciphertexts[1];
+        pool.reserve_nonce = o.nonce.to_le_bytes();
+
+        let amount_a_out = pool.pending_withdraw_a;
+        let amount_b_out = pool.pending_withdraw_b;
+        pool.pending_withdraw_a = 0;
+        pool.pending_withdraw_b = 0;
+
+        let pool_key = pool.key();
+        let bump_seed = [pool.pool_authority_bump];
+        let seeds: &[&[u8]] = &[b"pool_authority", pool_key.as_ref(), &bump_seed];
+        let signer = &[seeds];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.pool_token_a.to_account_info(),
+                    to: ctx.accounts.user_token_a.to_account_info(),
+                    authority: ctx.accounts.pool_authority.to_account_info(),
+                },
+                signer,
+            ),
+            amount_a_out,
+        )?;
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.pool_token_b.to_account_info(),
+                    to: ctx.accounts.user_token_b.to_account_info(),
+                    authority: ctx.accounts.pool_authority.to_account_info(),
+                },
+                signer,
+            ),
+            amount_b_out,
+        )?;
+
+        emit!(LiquidityRemovedEvent {
+            pool: pool_key,
+            user: ctx.accounts.user.key(),
+            encrypted_reserve_a: pool.encrypted_reserve_a,
+            encrypted_reserve_b: pool.encrypted_reserve_b,
+            amount_a_out,
+            amount_b_out,
+        });
+
+        Ok(())
+    }
+
+    pub fn swap(
+        ctx: Context<Swap>,
+        computation_offset: u64,
+        amount_in: u64,
+        a_to_b: bool,
+        ciphertext_in: [u8; 32],
+        pubkey: [u8; 32],
+        nonce: u128,
+    ) -> Result<()> {
+        let pool = &mut ctx.accounts.pool;
+
+        require!(pool.reserve_a_hint > 0 && pool.reserve_b_hint > 0, ErrorCode::PoolNotInitialized);
+
+        let amount_out = if a_to_b {
+            compute_amount_out(pool.reserve_a_hint, pool.reserve_b_hint, amount_in)
+        } else {
+            compute_amount_out(pool.reserve_b_hint, pool.reserve_a_hint, amount_in)
+        };
+
+        require!(amount_out > 0, ErrorCode::InsufficientLiquidity);
+
+        pool.pending_swap_amount_out = amount_out;
+        pool.pending_swap_user = ctx.accounts.user.key();
+        pool.pending_swap_a_to_b = a_to_b;
+
+        if a_to_b {
+            pool.reserve_a_hint = pool.reserve_a_hint.saturating_add(amount_in);
+            pool.reserve_b_hint = pool.reserve_b_hint.saturating_sub(amount_out);
+        } else {
+            pool.reserve_b_hint = pool.reserve_b_hint.saturating_add(amount_in);
+            pool.reserve_a_hint = pool.reserve_a_hint.saturating_sub(amount_out);
+        }
+
+        if a_to_b {
+            token::transfer(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.user_token_a.to_account_info(),
+                        to: ctx.accounts.pool_token_a.to_account_info(),
+                        authority: ctx.accounts.user.to_account_info(),
+                    },
+                ),
+                amount_in,
+            )?;
+        } else {
+            token::transfer(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.user_token_b.to_account_info(),
+                        to: ctx.accounts.pool_token_b.to_account_info(),
+                        authority: ctx.accounts.user.to_account_info(),
+                    },
+                ),
+                amount_in,
+            )?;
+        }
+
+        ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
+
+        let reserve_nonce = u128::from_le_bytes(pool.reserve_nonce);
+        let a_to_b_u8: u8 = if a_to_b { 1 } else { 0 };
+
+        let args = ArgBuilder::new()
+            .x25519_pubkey(pool.reserve_pubkey)
+            .plaintext_u128(reserve_nonce)
+            .encrypted_u64(pool.encrypted_reserve_a)
+            .encrypted_u64(pool.encrypted_reserve_b)
+            .x25519_pubkey(pubkey)
+            .plaintext_u128(nonce)
+            .encrypted_u64(ciphertext_in)
+            .plaintext_u64(amount_out)
+            .plaintext_u8(a_to_b_u8)
+            .build();
+
+        let pool_key_sw = ctx.accounts.pool.key();
+        let pool_auth_sw = Pubkey::create_program_address(
+            &[b"pool_authority", pool_key_sw.as_ref(), &[ctx.accounts.pool.pool_authority_bump]],
+            ctx.program_id,
+        ).unwrap();
+
+        queue_computation(
+            ctx.accounts,
+            computation_offset,
+            args,
+            vec![SwapCallback::callback_ix(
+                computation_offset,
+                &ctx.accounts.mxe_account,
+                &[
+                    CallbackAccount { pubkey: pool_key_sw,                           is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.user_token_a.key(),       is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.user_token_b.key(),       is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.pool_token_a.key(),       is_writable: true  },
+                    CallbackAccount { pubkey: ctx.accounts.pool_token_b.key(),       is_writable: true  },
+                    CallbackAccount { pubkey: pool_auth_sw,                          is_writable: false },
+                    CallbackAccount { pubkey: ctx.accounts.token_program.key(),      is_writable: false },
+                ],
+            )?],
+            1,
+            0,
+        )?;
+
+        Ok(())
+    }
+
+    #[arcium_callback(encrypted_ix = "swap")]
+    pub fn swap_callback(
+        ctx: Context<SwapCallback>,
+        output: SignedComputationOutputs<SwapOutput>,
+    ) -> Result<()> {
+        let o = match output.verify_output(
+            &ctx.accounts.cluster_account,
+            &ctx.accounts.computation_account,
+        ) {
+            Ok(SwapOutput { field_0 }) => field_0,
+            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+        };
+
+        let pool = &mut ctx.accounts.pool;
+        pool.encrypted_reserve_a = o.ciphertexts[0];
+        pool.encrypted_reserve_b = o.ciphertexts[1];
+        pool.reserve_nonce = o.nonce.to_le_bytes();
+
+        let amount_out = pool.pending_swap_amount_out;
+        let a_to_b = pool.pending_swap_a_to_b;
+        let swap_user = pool.pending_swap_user;
+        pool.pending_swap_amount_out = 0;
+
+        let pool_key = pool.key();
+        let bump_seed = [pool.pool_authority_bump];
+        let seeds: &[&[u8]] = &[b"pool_authority", pool_key.as_ref(), &bump_seed];
+        let signer = &[seeds];
+
+        if a_to_b {
+            token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.pool_token_b.to_account_info(),
+                        to: ctx.accounts.user_token_b.to_account_info(),
+                        authority: ctx.accounts.pool_authority.to_account_info(),
+                    },
+                    signer,
+                ),
+                amount_out,
+            )?;
+        } else {
+            token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.pool_token_a.to_account_info(),
+                        to: ctx.accounts.user_token_a.to_account_info(),
+                        authority: ctx.accounts.pool_authority.to_account_info(),
+                    },
+                    signer,
+                ),
+                amount_out,
+            )?;
+        }
+
+        emit!(SwapEvent {
+            pool: pool_key,
+            user: swap_user,
+            a_to_b,
+            amount_out,
+            encrypted_reserve_a: pool.encrypted_reserve_a,
+            encrypted_reserve_b: pool.encrypted_reserve_b,
+        });
+
+        Ok(())
+    }
+}
+
+#[account]
+pub struct LiquidityPool {
+    pub bump: u8,
+    pub pool_authority_bump: u8,
+    pub token_a_mint: Pubkey,
+    pub token_b_mint: Pubkey,
+    pub lp_mint: Pubkey,
+    pub authority: Pubkey,
+    pub encrypted_reserve_a: [u8; 32],
+    pub encrypted_reserve_b: [u8; 32],
+    pub reserve_pubkey: [u8; 32],
+    pub reserve_nonce: [u8; 16],
+    pub reserve_a_hint: u64,
+    pub reserve_b_hint: u64,
+    pub lp_supply: u64,
+    pub pending_lp_mint: u64,
+    pub pending_withdraw_a: u64,
+    pub pending_withdraw_b: u64,
+    pub pending_swap_amount_out: u64,
+    pub pending_swap_user: Pubkey,
+    pub pending_swap_a_to_b: bool,
+    pub pending_add_a: u64,
+    pub pending_add_b: u64,
+}
+
+impl LiquidityPool {
+    pub const LEN: usize = 8 + 1 + 1 + 32 + 32 + 32 + 32 + 32 + 32 + 32 + 16 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 32 + 1 + 8 + 8;
+}
+
+#[queue_computation_accounts("initialize_pool", authority)]
+#[derive(Accounts)]
+#[instruction(computation_offset: u64)]
+pub struct InitializeLiquidityPool<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(
+        init, payer = authority, space = LiquidityPool::LEN,
+        seeds = [b"pool", token_a_mint.key().as_ref(), token_b_mint.key().as_ref()],
+        bump
+    )]
+    pub pool: Account<'info, LiquidityPool>,
+    /// CHECK:
+    pub token_a_mint: UncheckedAccount<'info>,
+    /// CHECK:
+    pub token_b_mint: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub lp_mint: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_lp_token: UncheckedAccount<'info>,
+    #[account(init_if_needed, space = 9, payer = authority, seeds = [&SIGN_PDA_SEED], bump)]
+    pub sign_pda_account: Account<'info, ArciumSignerAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
+    /// CHECK:
+    #[account(mut, address = derive_mempool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub mempool_account: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_execpool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub executing_pool: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account, ErrorCode::ClusterNotSet))]
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_INIT_POOL))]
+    pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
+    #[account(mut, address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Box<Account<'info, Cluster>>,
+    #[account(mut, address = ARCIUM_FEE_POOL_ACCOUNT_ADDRESS)]
+    pub pool_account: Box<Account<'info, FeePool>>,
+    #[account(mut, address = ARCIUM_CLOCK_ACCOUNT_ADDRESS)]
+    pub clock_account: Box<Account<'info, ClockAccount>>,
+    pub system_program: Program<'info, System>,
+    /// CHECK:
+    pub token_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+}
+
+#[callback_accounts("initialize_pool")]
+#[derive(Accounts)]
+pub struct InitializePoolCallback<'info> {
+    pub arcium_program: Program<'info, Arcium>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_INIT_POOL))]
+    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK:
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Account<'info, Cluster>,
+    /// CHECK:
+    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub instructions_sysvar: AccountInfo<'info>,
+    #[account(mut)]
+    pub pool: Account<'info, LiquidityPool>,
+    /// CHECK:
+    #[account(mut)]
+    pub lp_mint: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_lp_token: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
+    pub pool_authority: UncheckedAccount<'info>,
+    /// CHECK:
+    pub token_program: UncheckedAccount<'info>,
+}
+
+#[queue_computation_accounts("add_liquidity", user)]
+#[derive(Accounts)]
+#[instruction(computation_offset: u64)]
+pub struct AddLiquidityToPool<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+    #[account(mut)]
+    pub pool: Account<'info, LiquidityPool>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_lp_token: UncheckedAccount<'info>,
+    #[account(init_if_needed, space = 9, payer = user, seeds = [&SIGN_PDA_SEED], bump)]
+    pub sign_pda_account: Account<'info, ArciumSignerAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK:
+    #[account(mut, address = derive_mempool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub mempool_account: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_execpool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub executing_pool: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account, ErrorCode::ClusterNotSet))]
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_ADD_LIQ))]
+    pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
+    #[account(mut, address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Box<Account<'info, Cluster>>,
+    #[account(mut, address = ARCIUM_FEE_POOL_ACCOUNT_ADDRESS)]
+    pub pool_account: Box<Account<'info, FeePool>>,
+    #[account(mut, address = ARCIUM_CLOCK_ACCOUNT_ADDRESS)]
+    pub clock_account: Box<Account<'info, ClockAccount>>,
+    pub system_program: Program<'info, System>,
+    /// CHECK:
+    pub token_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+}
+
+#[callback_accounts("add_liquidity")]
+#[derive(Accounts)]
+pub struct AddLiquidityCallback<'info> {
+    pub arcium_program: Program<'info, Arcium>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_ADD_LIQ))]
+    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK:
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Account<'info, Cluster>,
+    /// CHECK:
+    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub instructions_sysvar: AccountInfo<'info>,
+    #[account(mut)]
+    pub pool: Account<'info, LiquidityPool>,
+    #[account(mut)]
+    pub user: SystemAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub lp_mint: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_lp_token: UncheckedAccount<'info>,
+    /// CHECK:
+    pub pool_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    pub pool_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
+    pub pool_authority: UncheckedAccount<'info>,
+    /// CHECK:
+    pub token_program: UncheckedAccount<'info>,
+}
+
+#[queue_computation_accounts("remove_liquidity", user)]
+#[derive(Accounts)]
+#[instruction(computation_offset: u64)]
+pub struct RemoveLiquidityFromPool<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+    #[account(mut)]
+    pub pool: Account<'info, LiquidityPool>,
+    /// CHECK:
+    #[account(mut)]
+    pub lp_mint: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_lp_token: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_b: UncheckedAccount<'info>,
+    #[account(init_if_needed, space = 9, payer = user, seeds = [&SIGN_PDA_SEED], bump)]
+    pub sign_pda_account: Account<'info, ArciumSignerAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK:
+    #[account(mut, address = derive_mempool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub mempool_account: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_execpool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub executing_pool: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account, ErrorCode::ClusterNotSet))]
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_REMOVE_LIQ))]
+    pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
+    #[account(mut, address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Box<Account<'info, Cluster>>,
+    #[account(mut, address = ARCIUM_FEE_POOL_ACCOUNT_ADDRESS)]
+    pub pool_account: Box<Account<'info, FeePool>>,
+    #[account(mut, address = ARCIUM_CLOCK_ACCOUNT_ADDRESS)]
+    pub clock_account: Box<Account<'info, ClockAccount>>,
+    pub system_program: Program<'info, System>,
+    /// CHECK:
+    pub token_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+}
+
+#[callback_accounts("remove_liquidity")]
+#[derive(Accounts)]
+pub struct RemoveLiquidityCallback<'info> {
+    pub arcium_program: Program<'info, Arcium>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_REMOVE_LIQ))]
+    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK:
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Account<'info, Cluster>,
+    /// CHECK:
+    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub instructions_sysvar: AccountInfo<'info>,
+    #[account(mut)]
+    pub pool: Account<'info, LiquidityPool>,
+    #[account(mut)]
+    pub user: SystemAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
+    pub pool_authority: UncheckedAccount<'info>,
+    /// CHECK:
+    pub token_program: UncheckedAccount<'info>,
+}
+
+#[queue_computation_accounts("swap", user)]
+#[derive(Accounts)]
+#[instruction(computation_offset: u64)]
+pub struct Swap<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+    #[account(mut)]
+    pub pool: Account<'info, LiquidityPool>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_b: UncheckedAccount<'info>,
+    #[account(init_if_needed, space = 9, payer = user, seeds = [&SIGN_PDA_SEED], bump)]
+    pub sign_pda_account: Account<'info, ArciumSignerAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK:
+    #[account(mut, address = derive_mempool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub mempool_account: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_execpool_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub executing_pool: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_comp_pda!(computation_offset, mxe_account, ErrorCode::ClusterNotSet))]
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_SWAP))]
+    pub comp_def_account: Box<Account<'info, ComputationDefinitionAccount>>,
+    #[account(mut, address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Box<Account<'info, Cluster>>,
+    #[account(mut, address = ARCIUM_FEE_POOL_ACCOUNT_ADDRESS)]
+    pub pool_account: Box<Account<'info, FeePool>>,
+    #[account(mut, address = ARCIUM_CLOCK_ACCOUNT_ADDRESS)]
+    pub clock_account: Box<Account<'info, ClockAccount>>,
+    pub system_program: Program<'info, System>,
+    /// CHECK:
+    pub token_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+}
+
+#[callback_accounts("swap")]
+#[derive(Accounts)]
+pub struct SwapCallback<'info> {
+    pub arcium_program: Program<'info, Arcium>,
+    #[account(address = derive_comp_def_pda!(COMP_DEF_OFFSET_SWAP))]
+    pub comp_def_account: Account<'info, ComputationDefinitionAccount>,
+    #[account(address = derive_mxe_pda!())]
+    pub mxe_account: Account<'info, MXEAccount>,
+    /// CHECK:
+    pub computation_account: UncheckedAccount<'info>,
+    #[account(address = derive_cluster_pda!(mxe_account, ErrorCode::ClusterNotSet))]
+    pub cluster_account: Account<'info, Cluster>,
+    /// CHECK:
+    #[account(address = ::anchor_lang::solana_program::sysvar::instructions::ID)]
+    pub instructions_sysvar: AccountInfo<'info>,
+    #[account(mut)]
+    pub pool: Account<'info, LiquidityPool>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub user_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_a: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut)]
+    pub pool_token_b: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
+    pub pool_authority: UncheckedAccount<'info>,
+    /// CHECK:
+    pub token_program: UncheckedAccount<'info>,
+}
+
+#[init_computation_definition_accounts("initialize_pool", payer)]
+#[derive(Accounts)]
+pub struct InitInitializePoolCompDef<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut, address = derive_mxe_pda!())]
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
+    /// CHECK:
+    #[account(mut)]
+    pub comp_def_account: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
+    pub address_lookup_table: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(address = LUT_PROGRAM_ID)]
+    pub lut_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+    pub system_program: Program<'info, System>,
+}
+
+#[init_computation_definition_accounts("add_liquidity", payer)]
+#[derive(Accounts)]
+pub struct InitAddLiquidityCompDef<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut, address = derive_mxe_pda!())]
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
+    /// CHECK:
+    #[account(mut)]
+    pub comp_def_account: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
+    pub address_lookup_table: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(address = LUT_PROGRAM_ID)]
+    pub lut_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+    pub system_program: Program<'info, System>,
+}
+
+#[init_computation_definition_accounts("remove_liquidity", payer)]
+#[derive(Accounts)]
+pub struct InitRemoveLiquidityCompDef<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut, address = derive_mxe_pda!())]
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
+    /// CHECK:
+    #[account(mut)]
+    pub comp_def_account: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
+    pub address_lookup_table: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(address = LUT_PROGRAM_ID)]
+    pub lut_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+    pub system_program: Program<'info, System>,
+}
+
+#[init_computation_definition_accounts("swap", payer)]
+#[derive(Accounts)]
+pub struct InitSwapCompDef<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut, address = derive_mxe_pda!())]
+    pub mxe_account: Box<Account<'info, MXEAccount>>,
+    /// CHECK:
+    #[account(mut)]
+    pub comp_def_account: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(mut, address = derive_mxe_lut_pda!(mxe_account.lut_offset_slot))]
+    pub address_lookup_table: UncheckedAccount<'info>,
+    /// CHECK:
+    #[account(address = LUT_PROGRAM_ID)]
+    pub lut_program: UncheckedAccount<'info>,
+    pub arcium_program: Program<'info, Arcium>,
+    pub system_program: Program<'info, System>,
+}
+
+#[event]
+pub struct PoolInitializedEvent {
+    pub pool: Pubkey,
+    pub encrypted_reserve_a: [u8; 32],
+    pub encrypted_reserve_b: [u8; 32],
+    pub lp_supply: u64,
+}
+
+#[event]
+pub struct LiquidityAddedEvent {
+    pub pool: Pubkey,
+    pub user: Pubkey,
+    pub encrypted_reserve_a: [u8; 32],
+    pub encrypted_reserve_b: [u8; 32],
+    pub lp_minted: u64,
+}
+
+#[event]
+pub struct LiquidityRemovedEvent {
+    pub pool: Pubkey,
+    pub user: Pubkey,
+    pub encrypted_reserve_a: [u8; 32],
+    pub encrypted_reserve_b: [u8; 32],
+    pub amount_a_out: u64,
+    pub amount_b_out: u64,
+}
+
+#[event]
+pub struct SwapEvent {
+    pub pool: Pubkey,
+    pub user: Pubkey,
+    pub a_to_b: bool,
+    pub amount_out: u64,
+    pub encrypted_reserve_a: [u8; 32],
+    pub encrypted_reserve_b: [u8; 32],
+}
+
+#[error_code]
+pub enum ErrorCode {
+    #[msg("MPC computation aborted by cluster")]
+    AbortedComputation,
+    #[msg("Arcium cluster not set")]
+    ClusterNotSet,
+    #[msg("Insufficient liquidity")]
+    InsufficientLiquidity,
+    #[msg("Insufficient LP tokens")]
+    InsufficientLPTokens,
+    #[msg("Pool not initialized")]
+    PoolNotInitialized,
+}
+
+////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////
+
+use arcis::*;
+
+#[encrypted]
+mod circuits {
+    use arcis::*;
+
+    #[instruction]
+    pub fn initialize_pool(
+        reserves: Enc<Shared, (u64, u64)>,
+    ) -> Enc<Shared, (u64, u64)> {
+        let (a, b) = reserves.to_arcis();
+        reserves.owner.from_arcis((a, b))
+    }
+
+    #[instruction]
+    pub fn add_liquidity(
+        reserves: Enc<Shared, (u64, u64)>,
+        user_key: ArcisX25519Pubkey,
+        user_nonce: u128,
+        amounts: EncData<(u64, u64)>,
+    ) -> Enc<Shared, (u64, u64)> {
+        let (ra, rb) = reserves.to_arcis();
+        let (aa, ab) = amounts.to_arcis_with_pubkey_and_nonce(user_key, user_nonce);
+        reserves.owner.from_arcis((ra + aa, rb + ab))
+    }
+
+    #[instruction]
+    pub fn remove_liquidity(
+        reserves: Enc<Shared, (u64, u64)>,
+        amount_a_out: u64,
+        amount_b_out: u64,
+    ) -> Enc<Shared, (u64, u64)> {
+        let (ra, rb) = reserves.to_arcis();
+        reserves.owner.from_arcis((ra - amount_a_out, rb - amount_b_out))
+    }
+
+    #[instruction]
+    pub fn swap(
+        reserves: Enc<Shared, (u64, u64)>,
+        user_key: ArcisX25519Pubkey,
+        user_nonce: u128,
+        amount_in: EncData<u64>,
+        amount_out: u64,
+        a_to_b: u8,
+    ) -> Enc<Shared, (u64, u64)> {
+        let (ra, rb) = reserves.to_arcis();
+        let ai = amount_in.to_arcis_with_pubkey_and_nonce(user_key, user_nonce);
+
+        let new_ra_ab = ra + ai;
+        let new_rb_ab = rb - amount_out;
+
+        let new_ra_ba = ra - amount_out;
+        let new_rb_ba = rb + ai;
+
+        let final_ra = if a_to_b != 0 { new_ra_ab } else { new_ra_ba };
+        let final_rb = if a_to_b != 0 { new_rb_ab } else { new_rb_ba };
+
+        reserves.owner.from_arcis((final_ra, final_rb))
+    }
+}
