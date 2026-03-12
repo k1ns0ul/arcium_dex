@@ -10,7 +10,7 @@ const COMP_DEF_OFFSET_ADD_LIQ: u32 = comp_def_offset("add_liquidity");
 const COMP_DEF_OFFSET_REMOVE_LIQ: u32 = comp_def_offset("remove_liquidity");
 const COMP_DEF_OFFSET_SWAP: u32 = comp_def_offset("swap");
 
-declare_id!("F87CezWpsvWYpyzc7b8qzdwGLYDmYYy3MJCioeCkEjmF");
+declare_id!("HaKYy38VhCD2xnh6A242oodE9bbJkXvVLip6bc58SiBx");
 
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
@@ -306,7 +306,7 @@ pub mod arcium_hello_world {
                 &ctx.accounts.mxe_account,
                 &[
                     CallbackAccount { pubkey: pool_key_al,                           is_writable: true  },
-                    CallbackAccount { pubkey: ctx.accounts.user.key(),               is_writable: false },
+                    CallbackAccount { pubkey: ctx.accounts.user.key(),               is_writable: true  },
                     CallbackAccount { pubkey: ctx.accounts.pool.lp_mint,             is_writable: true  },
                     CallbackAccount { pubkey: ctx.accounts.user_lp_token.key(),      is_writable: true  },
                     CallbackAccount { pubkey: ctx.accounts.pool_token_a.key(),       is_writable: false },
@@ -445,7 +445,7 @@ pub mod arcium_hello_world {
                 &ctx.accounts.mxe_account,
                 &[
                     CallbackAccount { pubkey: pool_key_rl,                           is_writable: true  },
-                    CallbackAccount { pubkey: ctx.accounts.user.key(),               is_writable: false },
+                    CallbackAccount { pubkey: ctx.accounts.user.key(),               is_writable: true  },
                     CallbackAccount { pubkey: ctx.accounts.user_token_a.key(),       is_writable: true  },
                     CallbackAccount { pubkey: ctx.accounts.user_token_b.key(),       is_writable: true  },
                     CallbackAccount { pubkey: ctx.accounts.pool_token_a.key(),       is_writable: true  },
@@ -897,10 +897,8 @@ pub struct AddLiquidityCallback<'info> {
     #[account(mut)]
     pub user_lp_token: UncheckedAccount<'info>,
     /// CHECK:
-    #[account(mut)]
     pub pool_token_a: UncheckedAccount<'info>,
     /// CHECK:
-    #[account(mut)]
     pub pool_token_b: UncheckedAccount<'info>,
     /// CHECK:
     #[account(seeds = [b"pool_authority", pool.key().as_ref()], bump = pool.pool_authority_bump)]
