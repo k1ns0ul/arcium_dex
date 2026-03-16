@@ -12,7 +12,7 @@ const COMP_DEF_OFFSET_SWAP: u32 = comp_def_offset("swap");
 const COMP_DEF_OFFSET_DEPOSIT: u32 = comp_def_offset("deposit");
 const COMP_DEF_OFFSET_WITHDRAW: u32 = comp_def_offset("withdraw");
  
-declare_id!("CqD12RjZT4qtvCdYNzi7h7eNXpzBHzpnNCZJ23UeRbqT");
+declare_id!("2ZpcsBFCEvxuHcdAQEyn2c1hwP5K6Ft3heJoJLyCjvBh");
  
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
