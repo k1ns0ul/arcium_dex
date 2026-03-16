@@ -14,7 +14,7 @@ const COMP_DEF_OFFSET_INIT_DEPOSIT: u32 = comp_def_offset("init_deposit");
 const COMP_DEF_OFFSET_DEPOSIT: u32     = comp_def_offset("deposit");
 const COMP_DEF_OFFSET_WITHDRAW: u32    = comp_def_offset("withdraw");
 
-declare_id!("2n8HGBrUdeJRGMAiDBr1NzfCB667CvQpS8u8uKKoZM9Q");
+declare_id!("Er3BJApt4xxrTN5Ph3ujxCh5Ry12kruHciuN1dPkvRaZ");
 
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
@@ -160,7 +160,10 @@ pub mod arcium_hello_world {
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
             Ok(o) => o,
-            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+            Err(e) => {
+                msg!("Error: {}", e);
+                return Err(ErrorCode::AbortedComputation.into());
+            }
         };
         let pool = &mut ctx.accounts.pool;
         pool.encrypted_reserve_a = o.field_0.ciphertexts[0];
@@ -245,7 +248,10 @@ pub mod arcium_hello_world {
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
             Ok(o) => o,
-            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+            Err(e) => {
+                msg!("Error: {}", e);
+                return Err(ErrorCode::AbortedComputation.into());
+            }
         };
         let pool = &mut ctx.accounts.pool;
         pool.encrypted_reserve_a = o.field_0.field_0.ciphertexts[0];
@@ -324,7 +330,10 @@ pub mod arcium_hello_world {
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
             Ok(o) => o,
-            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+            Err(e) => {
+                msg!("Error: {}", e);
+                return Err(ErrorCode::AbortedComputation.into());
+            }
         };
         let pool = &mut ctx.accounts.pool;
         pool.encrypted_reserve_a = o.field_0.field_0.ciphertexts[0];
@@ -419,7 +428,10 @@ pub mod arcium_hello_world {
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
             Ok(o) => o,
-            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+            Err(e) => {
+                msg!("Error: {}", e);
+                return Err(ErrorCode::AbortedComputation.into());
+            }
         };
         let user_bal = &mut ctx.accounts.user_pool_balance;
         user_bal.encrypted_balance_a = o.field_0.ciphertexts[0];
@@ -482,7 +494,10 @@ pub mod arcium_hello_world {
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
             Ok(o) => o,
-            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+            Err(e) => {
+                msg!("Error: {}", e);
+                return Err(ErrorCode::AbortedComputation.into());
+            }
         };
         let user_bal = &mut ctx.accounts.user_pool_balance;
         user_bal.encrypted_balance_a = o.field_0.ciphertexts[0];
@@ -533,7 +548,10 @@ pub mod arcium_hello_world {
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
             Ok(o) => o,
-            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+            Err(e) => {
+                msg!("Error: {}", e);
+                return Err(ErrorCode::AbortedComputation.into());
+            }
         };
         let pool = &mut ctx.accounts.pool;
         pool.encrypted_reserve_a = o.field_0.field_0.ciphertexts[0];
@@ -586,7 +604,10 @@ pub mod arcium_hello_world {
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
             Ok(o) => o,
-            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+            Err(e) => {
+                msg!("Error: {}", e);
+                return Err(ErrorCode::AbortedComputation.into());
+            }
         };
         let user_bal = &mut ctx.accounts.user_pool_balance;
         user_bal.encrypted_balance_a = o.field_0.ciphertexts[0];
@@ -641,7 +662,10 @@ pub mod arcium_hello_world {
     ) -> Result<()> {
         let o = match output.verify_output(&ctx.accounts.cluster_account, &ctx.accounts.computation_account) {
             Ok(o) => o,
-            Err(_) => return Err(ErrorCode::AbortedComputation.into()),
+            Err(e) => {
+                msg!("Error: {}", e);
+                return Err(ErrorCode::AbortedComputation.into());
+            }
         };
         let user_bal = &mut ctx.accounts.user_pool_balance;
         user_bal.encrypted_balance_a = o.field_0.field_0.ciphertexts[0];

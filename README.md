@@ -1,5 +1,5 @@
 # 1. Закрыть программу
-solana program close HeqijA64QjTL7fpLh6qvCQHjJd2rhX8J5qzXXGUbYQQL \
+solana program close 2n8HGBrUdeJRGMAiDBr1NzfCB667CvQpS8u8uKKoZM9Q \
   --url devnet \
   --keypair ~/.config/solana/id.json \
   --bypass-warning
