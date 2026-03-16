@@ -48,11 +48,13 @@ mod circuits {
     #[instruction]
     pub fn deposit(
         balance: Enc<Mxe, (u64, u64)>,
-        amount_a: u64,
-        amount_b: u64,
+        user_key: ArcisX25519Pubkey,
+        user_nonce: u128,
+        amounts: EncData<(u64, u64)>,
     ) -> Enc<Mxe, (u64, u64)> {
         let (ba, bb) = balance.to_arcis();
-        Mxe::get().from_arcis((ba + amount_a, bb + amount_b))
+        let (aa, ab) = amounts.to_arcis_with_pubkey_and_nonce(user_key, user_nonce);
+        Mxe::get().from_arcis((ba + aa, bb + ab))
     }
  
     #[instruction]
@@ -67,17 +69,18 @@ mod circuits {
         let (ra, rb) = reserves.to_arcis();
         let (ba, bb) = balance.to_arcis();
         let ai = amount_in.to_arcis_with_pubkey_and_nonce(user_key, user_nonce);
- 
-        let (ri, ro) = if a_to_b != 0 { (ra, rb) } else { (rb, ra) };
+
+        let is_a_to_b = a_to_b != 0;
+        let (ri, ro) = if is_a_to_b { (ra, rb) } else { (rb, ra) };
         let ai_fee = ai * 997u64;
         let denom = ri * 1000u64 + ai_fee;
         let amount_out = (ro * ai_fee) / denom;
- 
-        let final_ra = if a_to_b != 0 { ra + ai } else { ra - amount_out };
-        let final_rb = if a_to_b != 0 { rb - amount_out } else { rb + ai };
-        let new_ba = if a_to_b != 0 { ba - ai } else { ba + amount_out };
-        let new_bb = if a_to_b != 0 { bb + amount_out } else { bb - ai };
- 
+
+        let final_ra = if is_a_to_b { ra + ai } else { ra - amount_out };
+        let final_rb = if is_a_to_b { rb - amount_out } else { rb + ai };
+        let new_ba = if is_a_to_b { ba - ai } else { ba + amount_out };
+        let new_bb = if is_a_to_b { bb + amount_out } else { bb - ai };
+
         (
             reserves.owner.from_arcis((final_ra, final_rb)),
             Mxe::get().from_arcis((new_ba, new_bb)),

@@ -12,7 +12,7 @@ const COMP_DEF_OFFSET_SWAP: u32 = comp_def_offset("swap");
 const COMP_DEF_OFFSET_DEPOSIT: u32 = comp_def_offset("deposit");
 const COMP_DEF_OFFSET_WITHDRAW: u32 = comp_def_offset("withdraw");
  
-declare_id!("4sxDGua72sXSrJwEEiEA7nGRLxwTF9Ud5Dvddu3Gnzj5");
+declare_id!("FLfY841Yxi6wdkTJR6bvD8w9R3i3e7YNsnXiR1hUHkjq");
  
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
@@ -520,6 +520,10 @@ pub mod arcium_hello_world {
         computation_offset: u64,
         amount_a: u64,
         amount_b: u64,
+        ciphertext_a: [u8; 32],
+        ciphertext_b: [u8; 32],
+        pubkey: [u8; 32],
+        nonce: u128,
     ) -> Result<()> {
         if amount_a > 0 {
             token::transfer(
@@ -547,18 +551,20 @@ pub mod arcium_hello_world {
                 amount_b,
             )?;
         }
- 
+
         ctx.accounts.sign_pda_account.bump = ctx.bumps.sign_pda_account;
- 
+
         let user_bal = &ctx.accounts.user_pool_balance;
         let balance_nonce = u128::from_le_bytes(user_bal.balance_nonce);
- 
+
         let args = ArgBuilder::new()
             .plaintext_u128(balance_nonce)
             .encrypted_u64(user_bal.encrypted_balance_a)
             .encrypted_u64(user_bal.encrypted_balance_b)
-            .plaintext_u64(amount_a)
-            .plaintext_u64(amount_b)
+            .x25519_pubkey(pubkey)
+            .plaintext_u128(nonce)
+            .encrypted_u64(ciphertext_a)
+            .encrypted_u64(ciphertext_b)
             .build();
  
         let user_bal_key = ctx.accounts.user_pool_balance.key();
@@ -1124,7 +1130,7 @@ pub struct RemoveLiquidityCallback<'info> {
     /// CHECK:
     pub token_program: UncheckedAccount<'info>,
 }
- 
+
 #[queue_computation_accounts("deposit", user)]
 #[derive(Accounts)]
 #[instruction(computation_offset: u64)]
