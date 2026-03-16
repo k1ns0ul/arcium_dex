@@ -5,7 +5,6 @@ import {
   Keypair,
   SystemProgram,
   LAMPORTS_PER_SOL,
-  Transaction,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
@@ -80,6 +79,19 @@ async function compDefExists(
   return [pda, info !== null];
 }
 
+function calcLpMinted(
+  amountA: number,
+  amountB: number,
+  reserveA: number,
+  reserveB: number,
+  lpSupply: number
+): number {
+  if (lpSupply === 0 || reserveA === 0 || reserveB === 0) return 0;
+  const shareA = Math.floor((amountA * lpSupply) / reserveA);
+  const shareB = Math.floor((amountB * lpSupply) / reserveB);
+  return Math.min(shareA, shareB);
+}
+
 describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
   const RPC_URL =
     "https://devnet.helius-rpc.com/?api-key=e229b931-070b-490c-b33b-c2f1d23747e8";
@@ -114,6 +126,24 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
   let userLpToken: PublicKey;
   let userPoolBalancePDA: PublicKey;
   let mxePublicKey: Uint8Array;
+
+  let trackedReserveA = 0;
+  let trackedReserveB = 0;
+  let trackedLpSupply = 0;
+
+  const INITIAL_AMOUNT_A = 1_000_000_000;
+  const INITIAL_AMOUNT_B = 1_000_000_000;
+
+  function intSqrt(n: number): number {
+    if (n === 0) return 0;
+    let x = n;
+    let y = Math.floor((x + 1) / 2);
+    while (y < x) {
+      x = y;
+      y = Math.floor((x + n / x) / 2);
+    }
+    return x;
+  }
 
   console.log("\n" + "=".repeat(60));
   console.log("Program:", program.programId.toString());
@@ -168,7 +198,6 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     );
     console.log("  LP Mint:", lpMint.toString());
 
-    console.log("[Setup] Creating pool vault accounts...");
     poolTokenAKp = Keypair.generate();
     poolTokenBKp = Keypair.generate();
 
@@ -189,7 +218,6 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     console.log("  Pool Token A vault:", poolTokenAKp.publicKey.toString());
     console.log("  Pool Token B vault:", poolTokenBKp.publicKey.toString());
 
-    console.log("[Setup] Creating user token accounts...");
     userTokenA = (
       await getOrCreateAssociatedTokenAccount(
         connection,
@@ -248,85 +276,53 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
   });
 
   it("1. Initialize computation definitions", async function () {
-    this.timeout(120_000);
+    this.timeout(180_000);
     console.log("[Test 1] Init CompDefs...");
 
     const mxeAccount = getMXEAccAddress(program.programId);
     const owner = readKpJson(`${os.homedir()}/.config/solana/id.json`);
 
-    for (const circuitName of [
-      "initialize_pool",
-      "add_liquidity",
-      "remove_liquidity",
-      "swap",
-      "deposit",
-      "withdraw",
-    ]) {
+    const circuits: Array<{ name: string; method: string }> = [
+      { name: "initialize_pool", method: "initInitializePoolCompDef" },
+      { name: "add_liquidity",   method: "initAddLiquidityCompDef"   },
+      { name: "remove_liquidity",method: "initRemoveLiquidityCompDef"},
+      { name: "swap",            method: "initSwapCompDef"           },
+      { name: "init_deposit",    method: "initInitDepositCompDef"    },
+      { name: "deposit",         method: "initDepositCompDef"        },
+      { name: "withdraw",        method: "initWithdrawCompDef"       },
+    ];
+
+    const arciumProgram = getArciumProgram(provider as anchor.AnchorProvider);
+    const mxeAcc = await arciumProgram.account.mxeAccount.fetch(mxeAccount);
+    const addressLookupTable = getLookupTableAddress(
+      program.programId,
+      mxeAcc.lutOffsetSlot
+    );
+
+    for (const circuit of circuits) {
       const [compDefPDA, exists] = await compDefExists(
         program,
         provider,
-        circuitName
+        circuit.name
       );
       if (exists) {
-        console.log(`  '${circuitName}' already exists, skipping`);
+        console.log(`  '${circuit.name}' already exists, skipping`);
         continue;
       }
-      console.log(`  Initializing '${circuitName}'...`);
-      const arciumProgram = getArciumProgram(
-        provider as anchor.AnchorProvider
-      );
-      const mxeAcc = await arciumProgram.account.mxeAccount.fetch(mxeAccount);
-      const addressLookupTable = getLookupTableAddress(
-        program.programId,
-        mxeAcc.lutOffsetSlot
-      );
-      const sharedAccounts = {
-        payer: owner.publicKey,
-        mxeAccount,
-        compDefAccount: compDefPDA,
-        addressLookupTable,
-        systemProgram: SystemProgram.programId,
-      };
-      let sig: string;
-      if (circuitName === "initialize_pool") {
-        sig = await program.methods
-          .initInitializePoolCompDef()
-          .accountsPartial(sharedAccounts)
-          .signers([owner])
-          .rpc({ commitment: "confirmed" });
-      } else if (circuitName === "add_liquidity") {
-        sig = await program.methods
-          .initAddLiquidityCompDef()
-          .accountsPartial(sharedAccounts)
-          .signers([owner])
-          .rpc({ commitment: "confirmed" });
-      } else if (circuitName === "remove_liquidity") {
-        sig = await program.methods
-          .initRemoveLiquidityCompDef()
-          .accountsPartial(sharedAccounts)
-          .signers([owner])
-          .rpc({ commitment: "confirmed" });
-      } else if (circuitName === "swap") {
-        sig = await program.methods
-          .initSwapCompDef()
-          .accountsPartial(sharedAccounts)
-          .signers([owner])
-          .rpc({ commitment: "confirmed" });
-      } else if (circuitName === "deposit") {
-        sig = await program.methods
-          .initDepositCompDef()
-          .accountsPartial(sharedAccounts)
-          .signers([owner])
-          .rpc({ commitment: "confirmed" });
-      } else {
-        sig = await program.methods
-          .initWithdrawCompDef()
-          .accountsPartial(sharedAccounts)
-          .signers([owner])
-          .rpc({ commitment: "confirmed" });
-      }
+      console.log(`  Initializing '${circuit.name}'...`);
+      const sig = await (program.methods as any)
+        [circuit.method]()
+        .accountsPartial({
+          payer: owner.publicKey,
+          mxeAccount,
+          compDefAccount: compDefPDA,
+          addressLookupTable,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc({ commitment: "confirmed" });
       await provider.connection.confirmTransaction(sig, "confirmed");
-      console.log(`  '${circuitName}' created: ${sig.slice(0, 20)}...`);
+      console.log(`  '${circuit.name}' created: ${sig.slice(0, 20)}...`);
     }
     console.log("All CompDefs ready");
   });
@@ -339,21 +335,19 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     const publicKey = x25519.getPublicKey(privateKey);
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
     const cipher = new RescueCipher(sharedSecret);
-    const initialAmountA = 1_000_000_000;
-    const initialAmountB = 1_000_000_000;
     const nonce = randomBytes(16);
     const ciphertexts = cipher.encrypt(
-      [BigInt(initialAmountA), BigInt(initialAmountB)],
+      [BigInt(INITIAL_AMOUNT_A), BigInt(INITIAL_AMOUNT_B)],
       nonce
     );
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
-    console.log(`  Reserves: ${initialAmountA} A + ${initialAmountB} B`);
+    console.log(`  Reserves: ${INITIAL_AMOUNT_A} A + ${INITIAL_AMOUNT_B} B`);
 
     const sig = await program.methods
       .initializeLiquidityPool(
         computationOffset,
-        new anchor.BN(initialAmountA),
-        new anchor.BN(initialAmountB),
+        new anchor.BN(INITIAL_AMOUNT_A),
+        new anchor.BN(INITIAL_AMOUNT_B),
         Array.from(ciphertexts[0]),
         Array.from(ciphertexts[1]),
         Array.from(publicKey),
@@ -372,9 +366,7 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         userLpToken,
         mxeAccount: getMXEAccAddress(program.programId),
         mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(
-          arciumEnv.arciumClusterOffset
-        ),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
         computationAccount: getComputationAccAddress(
           arciumEnv.arciumClusterOffset,
           computationOffset
@@ -399,11 +391,19 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
       program.programId,
       "confirmed"
     );
-    console.log("  MPC finalized");
 
     const lpAcc = await getAccount(connection, userLpToken);
     expect(Number(lpAcc.amount)).to.be.gt(0);
+
+    trackedReserveA = INITIAL_AMOUNT_A;
+    trackedReserveB = INITIAL_AMOUNT_B;
+    trackedLpSupply = intSqrt(INITIAL_AMOUNT_A * INITIAL_AMOUNT_B);
+
+    const poolAcc = await program.account.liquidityPool.fetch(poolPDA);
+    trackedLpSupply = Number(poolAcc.lpSupply);
+
     console.log(`  User LP balance: ${lpAcc.amount}`);
+    console.log(`  Tracked LP supply: ${trackedLpSupply}`);
     console.log("Pool initialized successfully");
   });
 
@@ -414,6 +414,7 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     const lpBefore = Number(
       (await getAccount(connection, userLpToken)).amount
     );
+
     const privateKey = x25519.utils.randomSecretKey();
     const publicKey = x25519.getPublicKey(privateKey);
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
@@ -425,8 +426,17 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
       [BigInt(amountA), BigInt(amountB)],
       nonce
     );
+
+    const lpMinted = calcLpMinted(
+      amountA,
+      amountB,
+      trackedReserveA,
+      trackedReserveB,
+      trackedLpSupply
+    );
+    console.log(`  Adding ${amountA} A + ${amountB} B, expected lp_minted: ${lpMinted}`);
+
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
-    console.log(`  Adding ${amountA} A + ${amountB} B`);
 
     const sig = await program.methods
       .addLiquidityToPool(
@@ -436,7 +446,8 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         Array.from(ciphertexts[0]),
         Array.from(ciphertexts[1]),
         Array.from(publicKey),
-        new anchor.BN(deserializeLE(nonce).toString())
+        new anchor.BN(deserializeLE(nonce).toString()),
+        new anchor.BN(lpMinted)
       )
       .accountsPartial({
         user: wallet.publicKey,
@@ -448,9 +459,7 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         userLpToken,
         mxeAccount: getMXEAccAddress(program.programId),
         mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(
-          arciumEnv.arciumClusterOffset
-        ),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
         computationAccount: getComputationAccAddress(
           arciumEnv.arciumClusterOffset,
           computationOffset
@@ -477,11 +486,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     );
 
     const lpAfter = Number((await getAccount(connection, userLpToken)).amount);
-    const minted = lpAfter - lpBefore;
-    console.log(
-      `  LP before: ${lpBefore}, after: ${lpAfter}, minted: ${minted}`
-    );
-    expect(minted).to.be.gt(0);
+    const actualMinted = lpAfter - lpBefore;
+    console.log(`  LP before: ${lpBefore}, after: ${lpAfter}, minted: ${actualMinted}`);
+    expect(actualMinted).to.be.gt(0);
+
+    trackedReserveA += amountA;
+    trackedReserveB += amountB;
+    trackedLpSupply += actualMinted;
+
     console.log("Liquidity added successfully");
   });
 
@@ -502,25 +514,36 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     console.log("  Tx:", sig);
     const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
     expect(acc.initialized).to.equal(false);
-    console.log("UserPoolBalance account created");
+    console.log("UserPoolBalance account created (initialized = false)");
   });
 
-  it("5. Deposit tokens into pool (visible amounts, sets encrypted balance)", async function () {
+  it("5. Init deposit — first encrypted deposit (no prior balance)", async function () {
     this.timeout(120_000);
-    console.log("[Test 5] Depositing tokens for swap...");
+    console.log("[Test 5] First deposit via initDepositToPool...");
 
+    const privateKey = x25519.utils.randomSecretKey();
+    const publicKey = x25519.getPublicKey(privateKey);
+    const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
+    const cipher = new RescueCipher(sharedSecret);
     const depositAmountA = 200_000_000;
     const depositAmountB = 200_000_000;
-    const computationOffset = new anchor.BN(randomBytes(8), "hex");
-    console.log(
-      `  Depositing ${depositAmountA} A + ${depositAmountB} B`
+    const nonce = randomBytes(16);
+    const ciphertexts = cipher.encrypt(
+      [BigInt(depositAmountA), BigInt(depositAmountB)],
+      nonce
     );
+    const computationOffset = new anchor.BN(randomBytes(8), "hex");
+    console.log(`  Depositing ${depositAmountA} A + ${depositAmountB} B (init)`);
 
     const sig = await program.methods
-      .depositToPool(
+      .initDepositToPool(
         computationOffset,
         new anchor.BN(depositAmountA),
-        new anchor.BN(depositAmountB)
+        new anchor.BN(depositAmountB),
+        Array.from(ciphertexts[0]),
+        Array.from(ciphertexts[1]),
+        Array.from(publicKey),
+        new anchor.BN(deserializeLE(nonce).toString())
       )
       .accountsPartial({
         user: wallet.publicKey,
@@ -532,9 +555,77 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         poolTokenB: poolTokenBKp.publicKey,
         mxeAccount: getMXEAccAddress(program.programId),
         mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(
-          arciumEnv.arciumClusterOffset
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
+        computationAccount: getComputationAccAddress(
+          arciumEnv.arciumClusterOffset,
+          computationOffset
         ),
+        compDefAccount: getCompDefAccAddress(
+          program.programId,
+          Buffer.from(getCompDefAccOffset("init_deposit")).readUInt32LE()
+        ),
+        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        poolAccount: getFeePoolAccAddress(),
+        clockAccount: getClockAccAddress(),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc({ commitment: "confirmed" });
+
+    console.log("  Tx:", sig);
+    console.log("  Waiting for MPC...");
+    await awaitComputationFinalization(
+      provider,
+      computationOffset,
+      program.programId,
+      "confirmed"
+    );
+
+    const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
+    expect(acc.initialized).to.equal(true);
+    console.log("  UserPoolBalance initialized:", acc.initialized);
+    console.log("Init deposit complete");
+  });
+
+  it("6. Subsequent deposit (balance already initialized)", async function () {
+    this.timeout(120_000);
+    console.log("[Test 6] Subsequent deposit via depositToPool...");
+
+    const privateKey = x25519.utils.randomSecretKey();
+    const publicKey = x25519.getPublicKey(privateKey);
+    const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
+    const cipher = new RescueCipher(sharedSecret);
+    const depositAmountA = 50_000_000;
+    const depositAmountB = 50_000_000;
+    const nonce = randomBytes(16);
+    const ciphertexts = cipher.encrypt(
+      [BigInt(depositAmountA), BigInt(depositAmountB)],
+      nonce
+    );
+    const computationOffset = new anchor.BN(randomBytes(8), "hex");
+    console.log(`  Adding ${depositAmountA} A + ${depositAmountB} B to existing balance`);
+
+    const sig = await program.methods
+      .depositToPool(
+        computationOffset,
+        new anchor.BN(depositAmountA),
+        new anchor.BN(depositAmountB),
+        Array.from(ciphertexts[0]),
+        Array.from(ciphertexts[1]),
+        Array.from(publicKey),
+        new anchor.BN(deserializeLE(nonce).toString())
+      )
+      .accountsPartial({
+        user: wallet.publicKey,
+        pool: poolPDA,
+        userPoolBalance: userPoolBalancePDA,
+        userTokenA,
+        userTokenB,
+        poolTokenA: poolTokenAKp.publicKey,
+        poolTokenB: poolTokenBKp.publicKey,
+        mxeAccount: getMXEAccAddress(program.programId),
+        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
         computationAccount: getComputationAccAddress(
           arciumEnv.arciumClusterOffset,
           computationOffset
@@ -562,13 +653,12 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
 
     const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
     expect(acc.initialized).to.equal(true);
-    console.log("  UserPoolBalance initialized:", acc.initialized);
-    console.log("Deposit complete");
+    console.log("Subsequent deposit complete");
   });
 
-  it("6. Swap token A to token B (zero token transfer, amounts hidden)", async function () {
+  it("7. Swap token A to token B — step 1: update reserves", async function () {
     this.timeout(180_000);
-    console.log("[Test 6] Swap A to B (fully private)...");
+    console.log("[Test 7] Swap A→B step 1 (reserves)...");
 
     const privateKey = x25519.utils.randomSecretKey();
     const publicKey = x25519.getPublicKey(privateKey);
@@ -578,15 +668,19 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     const nonce = randomBytes(16);
     const [ciphertextIn] = cipher.encrypt([BigInt(amountIn)], nonce);
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
-    console.log(`  amount_in: ${amountIn} (encrypted, never on-chain in clear)`);
+
+    swapCiphertextIn = Array.from(ciphertextIn);
+    swapPublicKey = Array.from(publicKey);
+    swapNonce = new anchor.BN(deserializeLE(nonce).toString());
+    swapAToB = true;
 
     const sig = await program.methods
-      .swap(
+      .swapStep1(
         computationOffset,
-        true,
-        Array.from(ciphertextIn),
-        Array.from(publicKey),
-        new anchor.BN(deserializeLE(nonce).toString())
+        swapAToB,
+        swapCiphertextIn,
+        swapPublicKey,
+        swapNonce
       )
       .accountsPartial({
         user: wallet.publicKey,
@@ -594,16 +688,11 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         userPoolBalance: userPoolBalancePDA,
         mxeAccount: getMXEAccAddress(program.programId),
         mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(
-          arciumEnv.arciumClusterOffset
-        ),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
+        computationAccount: getComputationAccAddress(arciumEnv.arciumClusterOffset, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
-          Buffer.from(getCompDefAccOffset("swap")).readUInt32LE()
+          Buffer.from(getCompDefAccOffset("swap_step1")).readUInt32LE()
         ),
         clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
         poolAccount: getFeePoolAccAddress(),
@@ -613,38 +702,27 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
       .rpc({ commitment: "confirmed" });
 
     console.log("  Tx:", sig);
-    console.log("  Waiting for MPC (no token transfers happen)...");
-    await awaitComputationFinalization(
-      provider,
-      computationOffset,
-      program.programId,
-      "confirmed"
-    );
-    console.log("  Swap complete — amount_in and amount_out never revealed");
-    console.log("Swap A to B complete");
+    await awaitComputationFinalization(provider, computationOffset, program.programId, "confirmed");
+
+    const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
+    const hasPending = acc.pendingAmountOut.some((b: number) => b !== 0);
+    expect(hasPending).to.equal(true, "pending_amount_out should be set after step1");
+    console.log("  Step 1 complete, pending_amount_out stored");
   });
 
-  it("7. Swap token B to token A", async function () {
+  it("8. Swap token A to token B — step 2: update balance", async function () {
     this.timeout(180_000);
-    console.log("[Test 7] Swap B to A (fully private)...");
+    console.log("[Test 8] Swap A→B step 2 (balance)...");
 
-    const privateKey = x25519.utils.randomSecretKey();
-    const publicKey = x25519.getPublicKey(privateKey);
-    const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
-    const cipher = new RescueCipher(sharedSecret);
-    const amountIn = 50_000_000;
-    const nonce = randomBytes(16);
-    const [ciphertextIn] = cipher.encrypt([BigInt(amountIn)], nonce);
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
-    console.log(`  amount_in: ${amountIn} B (encrypted)`);
 
     const sig = await program.methods
-      .swap(
+      .swapStep2(
         computationOffset,
-        false,
-        Array.from(ciphertextIn),
-        Array.from(publicKey),
-        new anchor.BN(deserializeLE(nonce).toString())
+        swapAToB,
+        swapCiphertextIn,
+        swapPublicKey,
+        swapNonce
       )
       .accountsPartial({
         user: wallet.publicKey,
@@ -652,16 +730,11 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         userPoolBalance: userPoolBalancePDA,
         mxeAccount: getMXEAccAddress(program.programId),
         mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(
-          arciumEnv.arciumClusterOffset
-        ),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
+        computationAccount: getComputationAccAddress(arciumEnv.arciumClusterOffset, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
-          Buffer.from(getCompDefAccOffset("swap")).readUInt32LE()
+          Buffer.from(getCompDefAccOffset("swap_step2")).readUInt32LE()
         ),
         clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
         poolAccount: getFeePoolAccAddress(),
@@ -671,19 +744,17 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
       .rpc({ commitment: "confirmed" });
 
     console.log("  Tx:", sig);
-    console.log("  Waiting for MPC...");
-    await awaitComputationFinalization(
-      provider,
-      computationOffset,
-      program.programId,
-      "confirmed"
-    );
-    console.log("Swap B to A complete");
+    await awaitComputationFinalization(provider, computationOffset, program.programId, "confirmed");
+
+    const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
+    const pendingCleared = acc.pendingAmountOut.every((b: number) => b === 0);
+    expect(pendingCleared).to.equal(true, "pending_amount_out should be cleared after step2");
+    console.log("  Step 2 complete, balance updated, pending cleared");
   });
 
-  it("8. Withdraw from pool (reveals balance, transfers tokens)", async function () {
+  it("9. Withdraw from pool (reveals balance, transfers tokens)", async function () {
     this.timeout(120_000);
-    console.log("[Test 8] Withdrawing from pool...");
+    console.log("[Test 9] Withdrawing from pool...");
 
     const tokenABefore = Number(
       (await getAccount(connection, userTokenA)).amount
@@ -705,9 +776,7 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         poolTokenB: poolTokenBKp.publicKey,
         mxeAccount: getMXEAccAddress(program.programId),
         mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(
-          arciumEnv.arciumClusterOffset
-        ),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
         computationAccount: getComputationAccAddress(
           arciumEnv.arciumClusterOffset,
           computationOffset
@@ -751,9 +820,9 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     console.log("Withdraw complete, UserPoolBalance reset");
   });
 
-  it("9. Remove liquidity from pool", async function () {
+  it("10. Remove liquidity from pool", async function () {
     this.timeout(120_000);
-    console.log("[Test 9] Removing liquidity...");
+    console.log("[Test 10] Removing liquidity...");
 
     const lpBalance = Number(
       (await getAccount(connection, userLpToken)).amount
@@ -785,18 +854,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         poolTokenB: poolTokenBKp.publicKey,
         mxeAccount: getMXEAccAddress(program.programId),
         mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(
-          arciumEnv.arciumClusterOffset
-        ),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
         computationAccount: getComputationAccAddress(
           arciumEnv.arciumClusterOffset,
           computationOffset
         ),
         compDefAccount: getCompDefAccAddress(
           program.programId,
-          Buffer.from(
-            getCompDefAccOffset("remove_liquidity")
-          ).readUInt32LE()
+          Buffer.from(getCompDefAccOffset("remove_liquidity")).readUInt32LE()
         ),
         clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
         poolAccount: getFeePoolAccAddress(),
