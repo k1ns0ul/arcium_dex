@@ -14,7 +14,7 @@ const COMP_DEF_OFFSET_INIT_DEPOSIT: u32 = comp_def_offset("init_deposit");
 const COMP_DEF_OFFSET_DEPOSIT: u32     = comp_def_offset("deposit");
 const COMP_DEF_OFFSET_WITHDRAW: u32    = comp_def_offset("withdraw");
 
-declare_id!("Er3BJApt4xxrTN5Ph3ujxCh5Ry12kruHciuN1dPkvRaZ");
+declare_id!("812pgq6ncyimdy2ajxRk4C5JWTSr4c3cCWxVxSeQ9bKC");
 
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }

@@ -32,7 +32,6 @@ import {
   getClusterAccAddress,
   getFeePoolAccAddress,
   getClockAccAddress,
-  getArciumEnv,
   getLookupTableAddress,
   getArciumProgram,
   x25519,
@@ -40,6 +39,8 @@ import {
 import * as fs from "fs";
 import * as os from "os";
 import { expect } from "chai";
+
+const CLUSTER_OFFSET = 456;
 
 function readKpJson(path: string): Keypair {
   const file = fs.readFileSync(path);
@@ -134,7 +135,6 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
 
   const program = anchor.workspace
     .ArciumHelloWorld as Program<ArciumHelloWorld>;
-  const arciumEnv = getArciumEnv();
 
   let tokenAMint: PublicKey;
   let tokenBMint: PublicKey;
@@ -383,17 +383,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         poolTokenB: poolTokenBKp.publicKey,
         userLpToken,
         mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+        executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+        computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("initialize_pool")).readUInt32LE()
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -476,17 +473,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         poolTokenB: poolTokenBKp.publicKey,
         userLpToken,
         mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+        executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+        computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("add_liquidity")).readUInt32LE()
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -575,17 +569,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         poolTokenA: poolTokenAKp.publicKey,
         poolTokenB: poolTokenBKp.publicKey,
         mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+        executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+        computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("init_deposit")).readUInt32LE()
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -648,17 +639,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         poolTokenA: poolTokenAKp.publicKey,
         poolTokenB: poolTokenBKp.publicKey,
         mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+        executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+        computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("deposit")).readUInt32LE()
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -714,17 +702,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         pool: poolPDA,
         userPoolBalance: userPoolBalancePDA,
         mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+        executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+        computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("swap_step1")).readUInt32LE()
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
         systemProgram: SystemProgram.programId,
@@ -770,17 +755,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         pool: poolPDA,
         userPoolBalance: userPoolBalancePDA,
         mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+        executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+        computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("swap_step2")).readUInt32LE()
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
         systemProgram: SystemProgram.programId,
@@ -841,17 +823,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         pool: poolPDA,
         userPoolBalance: userPoolBalancePDA,
         mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+        executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+        computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("swap_step1")).readUInt32LE()
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
         systemProgram: SystemProgram.programId,
@@ -893,17 +872,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         pool: poolPDA,
         userPoolBalance: userPoolBalancePDA,
         mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+        executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+        computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("swap_step2")).readUInt32LE()
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
         systemProgram: SystemProgram.programId,
@@ -949,17 +925,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         poolTokenA: poolTokenAKp.publicKey,
         poolTokenB: poolTokenBKp.publicKey,
         mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+        executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+        computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("withdraw")).readUInt32LE()
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -1028,17 +1001,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         poolTokenA: poolTokenAKp.publicKey,
         poolTokenB: poolTokenBKp.publicKey,
         mxeAccount: getMXEAccAddress(program.programId),
-        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(
-          arciumEnv.arciumClusterOffset,
-          computationOffset
-        ),
+        mempoolAccount: getMempoolAccAddress(CLUSTER_OFFSET),
+        executingPool: getExecutingPoolAccAddress(CLUSTER_OFFSET),
+        computationAccount: getComputationAccAddress(CLUSTER_OFFSET, computationOffset),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("remove_liquidity")).readUInt32LE()
         ),
-        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        clusterAccount: getClusterAccAddress(CLUSTER_OFFSET),
         poolAccount: getFeePoolAccAddress(),
         clockAccount: getClockAccAddress(),
         tokenProgram: TOKEN_PROGRAM_ID,
