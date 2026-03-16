@@ -26,6 +26,7 @@ mod circuits {
         let share_b = (ab * lp_supply) / rb;
         let lp_minted = if share_a < share_b { share_a } else { share_b };
         (reserves.owner.from_arcis((ra + aa, rb + ab)), lp_minted.reveal())
+        
     }
  
     #[instruction]
