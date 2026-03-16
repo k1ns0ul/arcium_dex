@@ -79,6 +79,17 @@ async function compDefExists(
   return [pda, info !== null];
 }
 
+function incrementNonce(nonce: Buffer): Buffer {
+  const result = Buffer.from(nonce);
+  let carry = 1;
+  for (let i = 0; i < 16 && carry; i++) {
+    const sum = result[i] + carry;
+    result[i] = sum & 0xff;
+    carry = sum >> 8;
+  }
+  return result;
+}
+
 function calcLpMinted(
   amountA: number,
   amountB: number,
@@ -90,6 +101,17 @@ function calcLpMinted(
   const shareA = Math.floor((amountA * lpSupply) / reserveA);
   const shareB = Math.floor((amountB * lpSupply) / reserveB);
   return Math.min(shareA, shareB);
+}
+
+function intSqrt(n: number): number {
+  if (n === 0) return 0;
+  let x = n;
+  let y = Math.floor((x + 1) / 2);
+  while (y < x) {
+    x = y;
+    y = Math.floor((x + n / x) / 2);
+  }
+  return x;
 }
 
 describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
@@ -131,24 +153,17 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
   let trackedReserveB = 0;
   let trackedLpSupply = 0;
 
+  let swapCiphertextIn: number[];
+  let swapPublicKey: number[];
+  let swapNonce: anchor.BN;
+  let swapAToB: boolean;
+
   const INITIAL_AMOUNT_A = 1_000_000_000;
   const INITIAL_AMOUNT_B = 1_000_000_000;
-
-  function intSqrt(n: number): number {
-    if (n === 0) return 0;
-    let x = n;
-    let y = Math.floor((x + 1) / 2);
-    while (y < x) {
-      x = y;
-      y = Math.floor((x + n / x) / 2);
-    }
-    return x;
-  }
 
   console.log("\n" + "=".repeat(60));
   console.log("Program:", program.programId.toString());
   console.log("Wallet:", wallet.publicKey.toString());
-  console.log("Model: UserPoolBalance (zero token transfer during swap)");
   console.log("=".repeat(60) + "\n");
 
   before(async function () {
@@ -160,7 +175,7 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
       throw new Error("Insufficient SOL. Run: solana airdrop 2 --url devnet");
     }
 
-    console.log("\n[Setup] Creating standard SPL mints...");
+    console.log("\n[Setup] Creating mints...");
     tokenAMint = await createMint(
       connection,
       wallet.payer,
@@ -283,13 +298,14 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     const owner = readKpJson(`${os.homedir()}/.config/solana/id.json`);
 
     const circuits: Array<{ name: string; method: string }> = [
-      { name: "initialize_pool", method: "initInitializePoolCompDef" },
-      { name: "add_liquidity",   method: "initAddLiquidityCompDef"   },
-      { name: "remove_liquidity",method: "initRemoveLiquidityCompDef"},
-      { name: "swap",            method: "initSwapCompDef"           },
-      { name: "init_deposit",    method: "initInitDepositCompDef"    },
-      { name: "deposit",         method: "initDepositCompDef"        },
-      { name: "withdraw",        method: "initWithdrawCompDef"       },
+      { name: "initialize_pool",  method: "initInitializePoolCompDef"  },
+      { name: "add_liquidity",    method: "initAddLiquidityCompDef"    },
+      { name: "remove_liquidity", method: "initRemoveLiquidityCompDef" },
+      { name: "swap_step1",       method: "initSwapStep1CompDef"       },
+      { name: "swap_step2",       method: "initSwapStep2CompDef"       },
+      { name: "init_deposit",     method: "initInitDepositCompDef"     },
+      { name: "deposit",          method: "initDepositCompDef"         },
+      { name: "withdraw",         method: "initWithdrawCompDef"        },
     ];
 
     const arciumProgram = getArciumProgram(provider as anchor.AnchorProvider);
@@ -335,11 +351,13 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     const publicKey = x25519.getPublicKey(privateKey);
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
     const cipher = new RescueCipher(sharedSecret);
+
     const nonce = randomBytes(16);
     const ciphertexts = cipher.encrypt(
       [BigInt(INITIAL_AMOUNT_A), BigInt(INITIAL_AMOUNT_B)],
       nonce
     );
+
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
     console.log(`  Reserves: ${INITIAL_AMOUNT_A} A + ${INITIAL_AMOUNT_B} B`);
 
@@ -395,12 +413,10 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     const lpAcc = await getAccount(connection, userLpToken);
     expect(Number(lpAcc.amount)).to.be.gt(0);
 
-    trackedReserveA = INITIAL_AMOUNT_A;
-    trackedReserveB = INITIAL_AMOUNT_B;
-    trackedLpSupply = intSqrt(INITIAL_AMOUNT_A * INITIAL_AMOUNT_B);
-
     const poolAcc = await program.account.liquidityPool.fetch(poolPDA);
     trackedLpSupply = Number(poolAcc.lpSupply);
+    trackedReserveA = INITIAL_AMOUNT_A;
+    trackedReserveB = INITIAL_AMOUNT_B;
 
     console.log(`  User LP balance: ${lpAcc.amount}`);
     console.log(`  Tracked LP supply: ${trackedLpSupply}`);
@@ -419,13 +435,13 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     const publicKey = x25519.getPublicKey(privateKey);
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
     const cipher = new RescueCipher(sharedSecret);
+
     const amountA = 500_000_000;
     const amountB = 500_000_000;
-    const nonce = randomBytes(16);
-    const ciphertexts = cipher.encrypt(
-      [BigInt(amountA), BigInt(amountB)],
-      nonce
-    );
+    const nonceA = randomBytes(16);
+    const nonceB = incrementNonce(Buffer.from(nonceA));
+    const [ciphertextA] = cipher.encrypt([BigInt(amountA)], nonceA);
+    const [ciphertextB] = cipher.encrypt([BigInt(amountB)], nonceB);
 
     const lpMinted = calcLpMinted(
       amountA,
@@ -434,7 +450,9 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
       trackedReserveB,
       trackedLpSupply
     );
-    console.log(`  Adding ${amountA} A + ${amountB} B, expected lp_minted: ${lpMinted}`);
+    console.log(
+      `  Adding ${amountA} A + ${amountB} B, expected lp_minted: ${lpMinted}`
+    );
 
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
 
@@ -443,10 +461,10 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         computationOffset,
         new anchor.BN(amountA),
         new anchor.BN(amountB),
-        Array.from(ciphertexts[0]),
-        Array.from(ciphertexts[1]),
+        Array.from(ciphertextA),
+        Array.from(ciphertextB),
         Array.from(publicKey),
-        new anchor.BN(deserializeLE(nonce).toString()),
+        new anchor.BN(deserializeLE(nonceA).toString()),
         new anchor.BN(lpMinted)
       )
       .accountsPartial({
@@ -487,7 +505,9 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
 
     const lpAfter = Number((await getAccount(connection, userLpToken)).amount);
     const actualMinted = lpAfter - lpBefore;
-    console.log(`  LP before: ${lpBefore}, after: ${lpAfter}, minted: ${actualMinted}`);
+    console.log(
+      `  LP before: ${lpBefore}, after: ${lpAfter}, minted: ${actualMinted}`
+    );
     expect(actualMinted).to.be.gt(0);
 
     trackedReserveA += amountA;
@@ -514,36 +534,37 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     console.log("  Tx:", sig);
     const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
     expect(acc.initialized).to.equal(false);
-    console.log("UserPoolBalance account created (initialized = false)");
+    console.log("UserPoolBalance created, initialized = false");
   });
 
-  it("5. Init deposit — first encrypted deposit (no prior balance)", async function () {
+  it("5. First deposit via initDepositToPool (no prior balance)", async function () {
     this.timeout(120_000);
-    console.log("[Test 5] First deposit via initDepositToPool...");
+    console.log("[Test 5] First deposit (init_deposit circuit)...");
 
     const privateKey = x25519.utils.randomSecretKey();
     const publicKey = x25519.getPublicKey(privateKey);
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
     const cipher = new RescueCipher(sharedSecret);
+
     const depositAmountA = 200_000_000;
     const depositAmountB = 200_000_000;
-    const nonce = randomBytes(16);
-    const ciphertexts = cipher.encrypt(
-      [BigInt(depositAmountA), BigInt(depositAmountB)],
-      nonce
-    );
+    const nonceA = randomBytes(16);
+    const nonceB = incrementNonce(Buffer.from(nonceA));
+    const [ciphertextA] = cipher.encrypt([BigInt(depositAmountA)], nonceA);
+    const [ciphertextB] = cipher.encrypt([BigInt(depositAmountB)], nonceB);
+
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
-    console.log(`  Depositing ${depositAmountA} A + ${depositAmountB} B (init)`);
+    console.log(`  Depositing ${depositAmountA} A + ${depositAmountB} B`);
 
     const sig = await program.methods
       .initDepositToPool(
         computationOffset,
         new anchor.BN(depositAmountA),
         new anchor.BN(depositAmountB),
-        Array.from(ciphertexts[0]),
-        Array.from(ciphertexts[1]),
+        Array.from(ciphertextA),
+        Array.from(ciphertextB),
         Array.from(publicKey),
-        new anchor.BN(deserializeLE(nonce).toString())
+        new anchor.BN(deserializeLE(nonceA).toString())
       )
       .accountsPartial({
         user: wallet.publicKey,
@@ -583,37 +604,40 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
 
     const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
     expect(acc.initialized).to.equal(true);
-    console.log("  UserPoolBalance initialized:", acc.initialized);
+    console.log("  initialized =", acc.initialized);
     console.log("Init deposit complete");
   });
 
-  it("6. Subsequent deposit (balance already initialized)", async function () {
+  it("6. Subsequent deposit via depositToPool (balance already initialized)", async function () {
     this.timeout(120_000);
-    console.log("[Test 6] Subsequent deposit via depositToPool...");
+    console.log("[Test 6] Subsequent deposit (deposit circuit)...");
 
     const privateKey = x25519.utils.randomSecretKey();
     const publicKey = x25519.getPublicKey(privateKey);
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
     const cipher = new RescueCipher(sharedSecret);
+
     const depositAmountA = 50_000_000;
     const depositAmountB = 50_000_000;
-    const nonce = randomBytes(16);
-    const ciphertexts = cipher.encrypt(
-      [BigInt(depositAmountA), BigInt(depositAmountB)],
-      nonce
-    );
+    const nonceA = randomBytes(16);
+    const nonceB = incrementNonce(Buffer.from(nonceA));
+    const [ciphertextA] = cipher.encrypt([BigInt(depositAmountA)], nonceA);
+    const [ciphertextB] = cipher.encrypt([BigInt(depositAmountB)], nonceB);
+
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
-    console.log(`  Adding ${depositAmountA} A + ${depositAmountB} B to existing balance`);
+    console.log(
+      `  Adding ${depositAmountA} A + ${depositAmountB} B to existing balance`
+    );
 
     const sig = await program.methods
       .depositToPool(
         computationOffset,
         new anchor.BN(depositAmountA),
         new anchor.BN(depositAmountB),
-        Array.from(ciphertexts[0]),
-        Array.from(ciphertexts[1]),
+        Array.from(ciphertextA),
+        Array.from(ciphertextB),
         Array.from(publicKey),
-        new anchor.BN(deserializeLE(nonce).toString())
+        new anchor.BN(deserializeLE(nonceA).toString())
       )
       .accountsPartial({
         user: wallet.publicKey,
@@ -656,23 +680,26 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
     console.log("Subsequent deposit complete");
   });
 
-  it("7. Swap token A to token B — step 1: update reserves", async function () {
+  it("7. Swap A to B — step 1: update reserves, store pending amount_out", async function () {
     this.timeout(180_000);
-    console.log("[Test 7] Swap A→B step 1 (reserves)...");
+    console.log("[Test 7] Swap A→B step 1 (swap_step1 circuit)...");
 
     const privateKey = x25519.utils.randomSecretKey();
     const publicKey = x25519.getPublicKey(privateKey);
     const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
     const cipher = new RescueCipher(sharedSecret);
+
     const amountIn = 100_000_000;
     const nonce = randomBytes(16);
     const [ciphertextIn] = cipher.encrypt([BigInt(amountIn)], nonce);
-    const computationOffset = new anchor.BN(randomBytes(8), "hex");
 
     swapCiphertextIn = Array.from(ciphertextIn);
     swapPublicKey = Array.from(publicKey);
     swapNonce = new anchor.BN(deserializeLE(nonce).toString());
     swapAToB = true;
+
+    const computationOffset = new anchor.BN(randomBytes(8), "hex");
+    console.log(`  amount_in: ${amountIn} A (encrypted), a_to_b: ${swapAToB}`);
 
     const sig = await program.methods
       .swapStep1(
@@ -689,7 +716,10 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         mxeAccount: getMXEAccAddress(program.programId),
         mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
         executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(arciumEnv.arciumClusterOffset, computationOffset),
+        computationAccount: getComputationAccAddress(
+          arciumEnv.arciumClusterOffset,
+          computationOffset
+        ),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("swap_step1")).readUInt32LE()
@@ -702,17 +732,28 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
       .rpc({ commitment: "confirmed" });
 
     console.log("  Tx:", sig);
-    await awaitComputationFinalization(provider, computationOffset, program.programId, "confirmed");
+    console.log("  Waiting for MPC...");
+    await awaitComputationFinalization(
+      provider,
+      computationOffset,
+      program.programId,
+      "confirmed"
+    );
 
     const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
-    const hasPending = acc.pendingAmountOut.some((b: number) => b !== 0);
-    expect(hasPending).to.equal(true, "pending_amount_out should be set after step1");
+    const hasPending = (acc.pendingAmountOut as number[]).some(
+      (b: number) => b !== 0
+    );
+    expect(hasPending).to.equal(
+      true,
+      "pending_amount_out should be set after step1"
+    );
     console.log("  Step 1 complete, pending_amount_out stored");
   });
 
-  it("8. Swap token A to token B — step 2: update balance", async function () {
+  it("8. Swap A to B — step 2: update user balance, clear pending", async function () {
     this.timeout(180_000);
-    console.log("[Test 8] Swap A→B step 2 (balance)...");
+    console.log("[Test 8] Swap A→B step 2 (swap_step2 circuit)...");
 
     const computationOffset = new anchor.BN(randomBytes(8), "hex");
 
@@ -731,7 +772,10 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
         mxeAccount: getMXEAccAddress(program.programId),
         mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
         executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-        computationAccount: getComputationAccAddress(arciumEnv.arciumClusterOffset, computationOffset),
+        computationAccount: getComputationAccAddress(
+          arciumEnv.arciumClusterOffset,
+          computationOffset
+        ),
         compDefAccount: getCompDefAccAddress(
           program.programId,
           Buffer.from(getCompDefAccOffset("swap_step2")).readUInt32LE()
@@ -744,17 +788,147 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
       .rpc({ commitment: "confirmed" });
 
     console.log("  Tx:", sig);
-    await awaitComputationFinalization(provider, computationOffset, program.programId, "confirmed");
+    console.log("  Waiting for MPC...");
+    await awaitComputationFinalization(
+      provider,
+      computationOffset,
+      program.programId,
+      "confirmed"
+    );
 
     const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
-    const pendingCleared = acc.pendingAmountOut.every((b: number) => b === 0);
-    expect(pendingCleared).to.equal(true, "pending_amount_out should be cleared after step2");
+    const pendingCleared = (acc.pendingAmountOut as number[]).every(
+      (b: number) => b === 0
+    );
+    expect(pendingCleared).to.equal(
+      true,
+      "pending_amount_out should be cleared after step2"
+    );
     console.log("  Step 2 complete, balance updated, pending cleared");
   });
 
-  it("9. Withdraw from pool (reveals balance, transfers tokens)", async function () {
+  it("9. Swap B to A — step 1", async function () {
+    this.timeout(180_000);
+    console.log("[Test 9] Swap B→A step 1...");
+
+    const privateKey = x25519.utils.randomSecretKey();
+    const publicKey = x25519.getPublicKey(privateKey);
+    const sharedSecret = x25519.getSharedSecret(privateKey, mxePublicKey);
+    const cipher = new RescueCipher(sharedSecret);
+
+    const amountIn = 50_000_000;
+    const nonce = randomBytes(16);
+    const [ciphertextIn] = cipher.encrypt([BigInt(amountIn)], nonce);
+
+    swapCiphertextIn = Array.from(ciphertextIn);
+    swapPublicKey = Array.from(publicKey);
+    swapNonce = new anchor.BN(deserializeLE(nonce).toString());
+    swapAToB = false;
+
+    const computationOffset = new anchor.BN(randomBytes(8), "hex");
+    console.log(`  amount_in: ${amountIn} B (encrypted), a_to_b: ${swapAToB}`);
+
+    const sig = await program.methods
+      .swapStep1(
+        computationOffset,
+        swapAToB,
+        swapCiphertextIn,
+        swapPublicKey,
+        swapNonce
+      )
+      .accountsPartial({
+        user: wallet.publicKey,
+        pool: poolPDA,
+        userPoolBalance: userPoolBalancePDA,
+        mxeAccount: getMXEAccAddress(program.programId),
+        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
+        computationAccount: getComputationAccAddress(
+          arciumEnv.arciumClusterOffset,
+          computationOffset
+        ),
+        compDefAccount: getCompDefAccAddress(
+          program.programId,
+          Buffer.from(getCompDefAccOffset("swap_step1")).readUInt32LE()
+        ),
+        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        poolAccount: getFeePoolAccAddress(),
+        clockAccount: getClockAccAddress(),
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc({ commitment: "confirmed" });
+
+    console.log("  Tx:", sig);
+    await awaitComputationFinalization(
+      provider,
+      computationOffset,
+      program.programId,
+      "confirmed"
+    );
+
+    const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
+    const hasPending = (acc.pendingAmountOut as number[]).some(
+      (b: number) => b !== 0
+    );
+    expect(hasPending).to.equal(true);
+    console.log("  Step 1 B→A complete");
+  });
+
+  it("10. Swap B to A — step 2", async function () {
+    this.timeout(180_000);
+    console.log("[Test 10] Swap B→A step 2...");
+
+    const computationOffset = new anchor.BN(randomBytes(8), "hex");
+
+    const sig = await program.methods
+      .swapStep2(
+        computationOffset,
+        swapAToB,
+        swapCiphertextIn,
+        swapPublicKey,
+        swapNonce
+      )
+      .accountsPartial({
+        user: wallet.publicKey,
+        pool: poolPDA,
+        userPoolBalance: userPoolBalancePDA,
+        mxeAccount: getMXEAccAddress(program.programId),
+        mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
+        executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
+        computationAccount: getComputationAccAddress(
+          arciumEnv.arciumClusterOffset,
+          computationOffset
+        ),
+        compDefAccount: getCompDefAccAddress(
+          program.programId,
+          Buffer.from(getCompDefAccOffset("swap_step2")).readUInt32LE()
+        ),
+        clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+        poolAccount: getFeePoolAccAddress(),
+        clockAccount: getClockAccAddress(),
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc({ commitment: "confirmed" });
+
+    console.log("  Tx:", sig);
+    await awaitComputationFinalization(
+      provider,
+      computationOffset,
+      program.programId,
+      "confirmed"
+    );
+
+    const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
+    const pendingCleared = (acc.pendingAmountOut as number[]).every(
+      (b: number) => b === 0
+    );
+    expect(pendingCleared).to.equal(true);
+    console.log("  Step 2 B→A complete");
+  });
+
+  it("11. Withdraw from pool (reveals balance, transfers tokens)", async function () {
     this.timeout(120_000);
-    console.log("[Test 9] Withdrawing from pool...");
+    console.log("[Test 11] Withdrawing from pool...");
 
     const tokenABefore = Number(
       (await getAccount(connection, userTokenA)).amount
@@ -817,19 +991,20 @@ describe("Encrypted AMM DEX — UserPoolBalance Model", () => {
 
     const acc = await program.account.userPoolBalance.fetch(userPoolBalancePDA);
     expect(acc.initialized).to.equal(false);
-    console.log("Withdraw complete, UserPoolBalance reset");
+    console.log("  initialized =", acc.initialized);
+    console.log("Withdraw complete");
   });
 
-  it("10. Remove liquidity from pool", async function () {
+  it("12. Remove liquidity from pool", async function () {
     this.timeout(120_000);
-    console.log("[Test 10] Removing liquidity...");
+    console.log("[Test 12] Removing liquidity...");
 
     const lpBalance = Number(
       (await getAccount(connection, userLpToken)).amount
     );
     const lpToRemove = Math.floor(lpBalance / 2);
     console.log(`  LP balance: ${lpBalance}, removing: ${lpToRemove}`);
-    expect(lpToRemove).to.be.gt(0, "LP balance is 0 — did test 2 pass?");
+    expect(lpToRemove).to.be.gt(0, "LP balance is 0");
 
     const privateKey = x25519.utils.randomSecretKey();
     const publicKey = x25519.getPublicKey(privateKey);
