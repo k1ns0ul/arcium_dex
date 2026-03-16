@@ -12,7 +12,7 @@ const COMP_DEF_OFFSET_SWAP: u32 = comp_def_offset("swap");
 const COMP_DEF_OFFSET_DEPOSIT: u32 = comp_def_offset("deposit");
 const COMP_DEF_OFFSET_WITHDRAW: u32 = comp_def_offset("withdraw");
  
-declare_id!("2ZpcsBFCEvxuHcdAQEyn2c1hwP5K6Ft3heJoJLyCjvBh");
+declare_id!("4sxDGua72sXSrJwEEiEA7nGRLxwTF9Ud5Dvddu3Gnzj5");
  
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
@@ -39,7 +39,7 @@ pub mod arcium_hello_world {
     }
  
 
- 
+
     pub fn init_add_liquidity_comp_def(ctx: Context<InitAddLiquidityCompDef>) -> Result<()> {
         init_comp_def(
             ctx.accounts,
