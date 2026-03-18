@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-arcium_hello_world = "812pgq6ncyimdy2ajxRk4C5JWTSr4c3cCWxVxSeQ9bKC"
+arcium_hello_world = "z8ApU4hftjizH8VzAv9sihhZQ2kfqfTut2zt7uYDJQZ"
 
 [programs.localnet]
-arcium_hello_world = "812pgq6ncyimdy2ajxRk4C5JWTSr4c3cCWxVxSeQ9bKC"
+arcium_hello_world = "z8ApU4hftjizH8VzAv9sihhZQ2kfqfTut2zt7uYDJQZ"
 
 [registry]
 url = "https://api.apr.dev"

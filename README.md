@@ -1,5 +1,5 @@
 # 1. Закрыть программу
-solana program close Er3BJApt4xxrTN5Ph3ujxCh5Ry12kruHciuN1dPkvRaZ \
+solana program close 9HK83DKqcnYQXpdscw3RoET5Pj9N9NDZCGAkUMXBaCXf \
   --url devnet \
   --keypair ~/.config/solana/id.json \
   --bypass-warning
@@ -27,8 +27,7 @@ arcium deploy \
   --cluster-offset 456 \
   --recovery-set-size 4 \
   --keypair-path ~/.config/solana/id.json \
-  --rpc-url "https://devnet.helius-rpc.com/?api-key=e229b931-070b-490c-b33b-c2f1d23747e8" \
-  --mempool-size Large
+  --rpc-url "https://devnet.helius-rpc.com/?api-key=e229b931-070b-490c-b33b-c2f1d23747e8"
 
 # 8. Тесты
 arcium test --cluster devnet --skip-build

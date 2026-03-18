@@ -3,7 +3,7 @@ use arcis::*;
 #[encrypted]
 mod circuits {
     use arcis::*;
-
+ 
     #[instruction]
     pub fn initialize_pool(
         reserves: Enc<Shared, (u64, u64)>,
