@@ -14,7 +14,7 @@ const COMP_DEF_OFFSET_INIT_DEPOSIT: u32 = comp_def_offset("init_deposit");
 const COMP_DEF_OFFSET_DEPOSIT: u32     = comp_def_offset("deposit");
 const COMP_DEF_OFFSET_WITHDRAW: u32    = comp_def_offset("withdraw");
 
-declare_id!("z8ApU4hftjizH8VzAv9sihhZQ2kfqfTut2zt7uYDJQZ");
+declare_id!("uoJLpAPHDHekRCVMnUdXrtMPDqnPpPbgTT137AhW4uY");
 
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 { return 0; }
@@ -650,6 +650,7 @@ pub mod arcium_hello_world {
                 CallbackAccount { pubkey: ctx.accounts.pool_token_b.key(),       is_writable: true  },
                 CallbackAccount { pubkey: pool_auth,                             is_writable: false },
                 CallbackAccount { pubkey: ctx.accounts.token_program.key(),      is_writable: false },
+                CallbackAccount { pubkey: pool_key,                              is_writable: false },
             ])?
         ], 1, 0)?;
         Ok(())
